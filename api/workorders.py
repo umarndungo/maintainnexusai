@@ -133,23 +133,18 @@ async def list_work_orders():
             .order_by(WorkOrderRecord.created_at.desc())
             .all()
         )
-        work_orders = []
-        seen_ids = set()
-        for record in records:
-            if record.id in seen_ids:
-                continue
-            seen_ids.add(record.id)
-            work_orders.append(
-                {
-                    "work_order_id": record.id,
-                    "equipment_id": record.equipment_id,
-                    "assigned_technician_id": record.technician_id,
-                    "reserved_part": record.part_number,
-                    "status": _compute_work_order_status(record.created_at),
-                    "created_at": record.created_at.isoformat(),
-                    "duration_seconds": _elapsed_seconds(record.created_at),
-                }
-            )
+        work_orders = [
+            {
+                "work_order_id": record.id,
+                "equipment_id": record.equipment_id,
+                "assigned_technician_id": record.technician_id,
+                "reserved_part": record.part_number,
+                "status": _compute_work_order_status(record.created_at),
+                "created_at": record.created_at.isoformat(),
+                "duration_seconds": _elapsed_seconds(record.created_at),
+            }
+            for record in records
+        ]
         return work_orders
     finally:
         db.close()

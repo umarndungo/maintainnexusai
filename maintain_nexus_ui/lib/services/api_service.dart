@@ -82,12 +82,9 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body) as List<dynamic>;
-      final uniqueOrders = <String, WorkOrder>{};
-      for (final item in data) {
-        final workOrder = WorkOrder.fromJson(item as Map<String, dynamic>);
-        uniqueOrders.putIfAbsent(workOrder.id, () => workOrder);
-      }
-      return uniqueOrders.values.toList();
+      return data
+          .map((item) => WorkOrder.fromJson(item as Map<String, dynamic>))
+          .toList();
     }
 
     throw Exception('Failed to load work orders: ${response.statusCode}');

@@ -15,8 +15,17 @@ router = APIRouter(prefix="/api/v1/warehouse", tags=["Inventory"])
 
 _PARTS = [
     "Pump Seal Kit #A4",
+    "Pump Seal Kit #A1",
+    "Pump Seal Kit #A3",
+    "Pump Seal Kit #A2",
     "Gasket Set #B2",
+    "Gasket Set #B1",
+    "Gasket Set #B3",
+    "Gasket Set #B4",
     "Control Valve #C8",
+    "Control Valve #C1",
+    "Control Valve #C3",
+    "Control Valve #C4",
     "Bearing Ring #D5",
     "Sensor Module #E1",
 ]

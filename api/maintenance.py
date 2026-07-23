@@ -85,10 +85,10 @@ async def receive_alert(alert: AlertPayload):
     finally:
         db.close()
 
-    # Enqueue to Celery (fire-and-forget)
+    # Enqueue to Celery (fire-and-forget) with the full payload including task_id.
     try:
         from tasks import process_alert
-        process_alert.delay(alert_dict)
+        process_alert.delay(persisted_payload)
         logger.info("Alert %s enqueued to Celery.", task_id)
     except Exception as exc:
         # If Celery is unreachable, log but still return 202 —
@@ -121,7 +121,7 @@ async def list_recent_alerts():
         )
 
         alerts = []
-        seen_task_ids = set()
+        seen_alert_keys = set()
         for record in records:
             try:
                 payload = json.loads(record.payload)
@@ -129,10 +129,12 @@ async def list_recent_alerts():
                 continue
 
             task_id = payload.get("task_id")
-            if task_id in seen_task_ids:
+            dedupe_key = task_id or \
+                f"{payload.get('equipment_id')}:{payload.get('part_number')}:{payload.get('failure_code')}:{record.timestamp.isoformat()}"
+            if dedupe_key in seen_alert_keys:
                 continue
 
-            seen_task_ids.add(task_id)
+            seen_alert_keys.add(dedupe_key)
             alerts.append(
                 {
                     "task_id": task_id,
