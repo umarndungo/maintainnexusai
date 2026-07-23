@@ -116,28 +116,19 @@ async def list_recent_alerts():
             db.query(AuditLog)
             .filter(AuditLog.event_name == "ALERT_RECEIVED")
             .order_by(AuditLog.timestamp.desc())
-            .limit(50)
             .all()
         )
 
         alerts = []
-        seen_alert_keys = set()
         for record in records:
             try:
                 payload = json.loads(record.payload)
             except json.JSONDecodeError:
                 continue
 
-            task_id = payload.get("task_id")
-            dedupe_key = task_id or \
-                f"{payload.get('equipment_id')}:{payload.get('part_number')}:{payload.get('failure_code')}:{record.timestamp.isoformat()}"
-            if dedupe_key in seen_alert_keys:
-                continue
-
-            seen_alert_keys.add(dedupe_key)
             alerts.append(
                 {
-                    "task_id": task_id,
+                    "task_id": payload.get("task_id"),
                     "equipment_id": payload.get("equipment_id"),
                     "part_number": payload.get("part_number"),
                     "severity": payload.get("severity"),

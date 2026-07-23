@@ -109,8 +109,8 @@ def process_alert(self, alert: dict):
 
     logger.info("Processing alert %s", alert.get("task_id", "N/A"))
 
-    # Audit: alert received
-    _write_audit_log("ALERT_RECEIVED", alert)
+    # Audit: alert processing started
+    _write_audit_log("ALERT_PROCESSING", alert)
 
     try:
         result = process_alert_pipeline(alert)

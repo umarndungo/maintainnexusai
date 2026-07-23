@@ -99,15 +99,9 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body) as List<dynamic>;
-      final uniqueAlerts = <String, AlertRecord>{};
-      for (final item in data) {
-        final alert = AlertRecord.fromJson(item as Map<String, dynamic>);
-        final dedupeKey =
-            alert.taskId ??
-            '${alert.equipmentId}:${alert.partNumber}:${alert.failureCode}:${alert.receivedAt}';
-        uniqueAlerts.putIfAbsent(dedupeKey, () => alert);
-      }
-      return uniqueAlerts.values.toList();
+      return data
+          .map((item) => AlertRecord.fromJson(item as Map<String, dynamic>))
+          .toList();
     }
 
     throw Exception('Failed to load alerts: ${response.statusCode}');
