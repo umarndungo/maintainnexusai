@@ -30,6 +30,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String statusMessage = 'System Ready';
   int workOrderCount = 0;
   int alertCount = 0;
+  int incidentCount = 0;
+  int openWorkOrders = 0;
+  double downtimeMinutes = 0.0;
+  double meanRepairTimeMinutes = 0.0;
+  double uptimePercentage = 0.0;
   List<Technician> availableTechnicians = [];
   List<InventoryItem> inventory = [];
 
@@ -54,6 +59,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         workOrderCount = summary.workOrderCount;
         alertCount = summary.alertCount;
+        incidentCount = summary.incidentCount;
+        openWorkOrders = summary.openWorkOrders;
+        downtimeMinutes = summary.downtimeMinutes;
+        meanRepairTimeMinutes = summary.meanRepairTimeMinutes;
+        uptimePercentage = summary.uptimePercentage;
         availableTechnicians = summary.availableTechnicians;
         inventory = summary.inventory;
         statusMessage = 'Loaded $workOrderCount orders, $alertCount alerts.';
@@ -415,6 +425,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ),
                             )
                             .toList(),
+                ),
+                const SizedBox(height: 16),
+                _buildSummaryCard(
+                  'Performance Metrics',
+                  Icons.speed,
+                  const Color(0xFF047857),
+                  [
+                    Text('Incidents: $workOrderCount dispatched, $alertCount alerts'),
+                    const SizedBox(height: 8),
+                    Text('Open work orders: $openWorkOrders'),
+                    Text('Incident count: $incidentCount'),
+                    Text('Estimated downtime: ${downtimeMinutes.toStringAsFixed(1)} min'),
+                    Text('Mean repair time: ${meanRepairTimeMinutes.toStringAsFixed(1)} min'),
+                    Text('Uptime estimate: ${uptimePercentage.toStringAsFixed(1)}%'),
+                  ],
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(

@@ -5,12 +5,22 @@
 class DashboardSummary {
   final int workOrderCount;
   final int alertCount;
+  final int incidentCount;
+  final int openWorkOrders;
+  final double downtimeMinutes;
+  final double meanRepairTimeMinutes;
+  final double uptimePercentage;
   final List<Technician> availableTechnicians;
   final List<InventoryItem> inventory;
 
   DashboardSummary({
     required this.workOrderCount,
     required this.alertCount,
+    required this.incidentCount,
+    required this.openWorkOrders,
+    required this.downtimeMinutes,
+    required this.meanRepairTimeMinutes,
+    required this.uptimePercentage,
     required this.availableTechnicians,
     required this.inventory,
   });
@@ -19,6 +29,12 @@ class DashboardSummary {
     return DashboardSummary(
       workOrderCount: json['work_order_count'] as int,
       alertCount: json['alert_count'] as int,
+      incidentCount: json['incident_count'] as int,
+      openWorkOrders: json['open_work_orders'] as int,
+      downtimeMinutes: (json['downtime_minutes'] as num).toDouble(),
+      meanRepairTimeMinutes:
+          (json['mean_repair_time_minutes'] as num).toDouble(),
+      uptimePercentage: (json['uptime_percentage'] as num).toDouble(),
       availableTechnicians: (json['available_technicians'] as List<dynamic>)
           .map((item) => Technician.fromJson(item as Map<String, dynamic>))
           .toList(),
