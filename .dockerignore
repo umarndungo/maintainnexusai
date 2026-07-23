@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+
+# Environment files
+.env
+.env.*
+*.env
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Python cache and build artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+*.egg-info
+dist
+build
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker files (not needed in build context)
+docker-compose.yml
+docker-compose.*.yml
+
+# Documentation and metadata (not needed at runtime)
+README.md
+LICENSE
+
+# Test files (not needed in production image)
+tests/

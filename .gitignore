@@ -1,0 +1,102 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+env/
+venv/
+venv3/
+ENV/
+.env
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+htmlcov/
+.tox/
+.nox/
+.coverage
+coverage.xml
+*.cover
+*.py,cover
+.cache
+.pytest_cache/
+
+# SQLAlchemy / database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker
+docker-compose.override.yml
+*.log
+*.pid
+*.env
+
+# Flask / FastAPI / general app
+instance/
+.webassets-cache
+
+# PyCharm
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+.history/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# Build directories
+build/
+dist/
+.eggs/
+.eggs
+*.egg-info/
+.installed.cfg
+lib/python*/
+
+# Node.js / web
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Flutter
+**/build/
+.dart_tool/
+.packages
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+
+# Android
+**/android/.gradle/
+**/android/app/build/
+**/android/gradle/
+**/android/local.properties
+**/android/.idea/
+**/android/captures/
+
+# iOS
+**/ios/Pods/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/ios/Runner.xcworkspace/
+**/ios/Flutter/Flutter.xcconfig
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/Generated.xcconfig
+
+# Logs
+*.log
+
+# Generated files
+*.lock
