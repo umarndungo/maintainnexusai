@@ -349,10 +349,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 8),
-            Text(
-              'Boardroom-ready focus: faster response, fewer downtime minutes, and clear assignment visibility.',
-              style: const TextStyle(color: Colors.white70),
-            ),
           ],
         ),
       ),
