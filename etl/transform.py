@@ -30,6 +30,7 @@ def build_work_order_payload(alert: dict, technician: dict) -> dict:
             - technician_id  : assigned technician
             - part_number    : replacement part
             - status         : initial lifecycle state (``"CREATED"``)
+            - alert_task_id  : optional upstream alert ID for correlation with the originating alert
     """
     work_order = {
         "equipment_id": alert["equipment_id"],

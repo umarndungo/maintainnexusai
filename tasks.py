@@ -70,11 +70,11 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Signal: create tables when the worker starts (only once)
+# Signal: ensure database schema is current when the worker starts
 # ---------------------------------------------------------------------------
 @signals.worker_ready.connect
 def create_tables_on_startup(**kwargs):
-    """Ensure DB tables exist and schema is up to date when the Celery worker boots."""
+    """Ensure DB tables exist and the current schema is applied when the Celery worker boots."""
     init_database()
     logger.info("Database tables verified / created.")
 

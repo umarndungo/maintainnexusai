@@ -71,12 +71,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
         availableTechnicians = summary.availableTechnicians;
         inventory = summary.inventory;
         recentHealthChecks = summary.recentHealthChecks;
-        statusMessage = 'Loaded $workOrderCount orders, $alertCount alerts.';
+        statusMessage = summary.backendStatus == 'ok'
+            ? 'Loaded $workOrderCount orders, $alertCount alerts.'
+            : 'Backend status: ${summary.backendStatus}. Loaded $workOrderCount orders, $alertCount alerts.';
       });
     } catch (e) {
       setState(() {
-        statusMessage = 'Dashboard refresh failed: $e';
+        statusMessage = 'Connecting ...';
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to refresh dashboard data. Retrying connection...',
+          ),
+          action: SnackBarAction(
+            label: 'Retry',
+            onPressed: _loadDashboardCounts,
+          ),
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
   }
 

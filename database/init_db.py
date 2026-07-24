@@ -1,8 +1,8 @@
 """
-Database Initialisation — Create Tables on Startup.
+Database Initialisation — Create Tables and Apply Safe Schema Updates on Startup.
 
 Called by the FastAPI lifespan event and the Celery worker startup signal
-so tables are guaranteed to exist before any code attempts to read/write.
+so the database schema is created and updated before any code attempts to read/write.
 """
 
 import logging

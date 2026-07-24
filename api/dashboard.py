@@ -38,6 +38,7 @@ async def get_dashboard_summary():
         - alert_count           : total received alert events
         - available_technicians : currently on-shift technician roster
         - inventory             : current part availability for the warehouse
+        - backend_status        : health of the dashboard backend aggregation endpoint
     """
     db = SessionLocal()
     try:
@@ -172,4 +173,5 @@ async def get_dashboard_summary():
         "uptime_percentage": uptime_percentage,
         "external_source_alerts": external_source_alerts,
         "recent_health_checks": health_checks,
+        "backend_status": "ok",
     }

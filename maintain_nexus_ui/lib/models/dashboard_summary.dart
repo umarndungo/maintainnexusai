@@ -7,6 +7,7 @@ class DashboardSummary {
   final int alertCount;
   final int incidentCount;
   final int openWorkOrders;
+  final String backendStatus;
   final double downtimeMinutes;
   final double meanRepairTimeMinutes;
   final double uptimePercentage;
@@ -22,6 +23,7 @@ class DashboardSummary {
     required this.downtimeMinutes,
     required this.meanRepairTimeMinutes,
     required this.uptimePercentage,
+    required this.backendStatus,
     required this.availableTechnicians,
     required this.inventory,
     required this.recentHealthChecks,
@@ -41,6 +43,7 @@ class DashboardSummary {
       meanRepairTimeMinutes:
           (json['mean_repair_time_minutes'] as num?)?.toDouble() ?? 0.0,
       uptimePercentage: (json['uptime_percentage'] as num?)?.toDouble() ?? 0.0,
+      backendStatus: (json['backend_status'] as String?) ?? 'unknown',
       availableTechnicians: (availableTechniciansJson is List<dynamic>
               ? availableTechniciansJson
               : <dynamic>[]) 

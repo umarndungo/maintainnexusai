@@ -81,6 +81,7 @@ async def create_work_order(wo: WorkOrderCreate):
         - part_number    : the replacement part
         - status         : "DISPATCHED"
         - lifecycle      : full state history
+        - alert_task_id  : optional upstream alert identifier for correlation with the originating alert
     """
     wo_id = f"WO-{uuid.uuid4().hex[:8].upper()}"
     created_at = datetime.now(timezone.utc)
