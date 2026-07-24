@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 
 from celery import Celery, signals
 
+from api.equipment import EQUIPMENT_IDS, PARTS
 from database.db import SessionLocal
 from database.models import Base, WorkOrderRecord, AuditLog
 
@@ -140,10 +141,10 @@ def scheduled_pipeline_run():
     Each run produces a randomly generated alert payload so the system
     ingests different alerts rather than the same static sample every time.
     """
-    equipment_id = f"PUMP-{random.randint(100, 999)}"
+    equipment_id = random.choice(EQUIPMENT_IDS)
     sample_alert = {
         "equipment_id": equipment_id,
-        "part_number": f"Pump Seal Kit #A{random.randint(1, 9)}",
+        "part_number": random.choice(PARTS),
         "severity": random.choice(["HIGH", "CRITICAL", "MEDIUM"]),
         "failure_code": random.choice([
             "ERR_SEAL_LEAK",

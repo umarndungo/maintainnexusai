@@ -18,6 +18,21 @@ _TECHNICIAN_NAMES = [
     "Clara J.",
     "Daniel K.",
     "Eva L.",
+    "Frank N.",
+    "Grace P.",
+    "Henry R.",
+    "Isabelle S.",
+    "Jason T.",
+    "Karen U.",
+    "Leo V.",
+    "Mia W.",
+    "Noah X.",
+    "Olivia Y.",
+    "Paul Z.",
+    "Quinn A.",
+    "Rosa B.",
+    "Samuel C.",
+    "Tasha D.",
 ]
 
 _CERT_SETS = [
@@ -26,6 +41,8 @@ _CERT_SETS = [
     ["ELECTRICAL"],
     ["MECHANICAL", "PUMP_SEAL"],
     ["CONTROL_SYSTEMS"],
+    ["HYDRAULICS"],
+    ["ROTATING_EQUIPMENT"],
 ]
 
 
