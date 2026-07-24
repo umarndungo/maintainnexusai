@@ -5,7 +5,6 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 import '../models/dashboard_summary.dart';
 import '../models/work_order.dart';
@@ -161,36 +160,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Widget _buildStatusCard() {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: 18,
-        ),
-        leading: const Icon(
-          Icons.analytics,
-          color: Color(0xFF0284C7),
-          size: 32,
-        ),
-        title: const Text(
-          'System Status',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-        ),
-        subtitle: Text(statusMessage),
-        trailing: isLoading
-            ? const SizedBox(
-                height: 28,
-                width: 28,
-                child: SpinKitCircle(color: Color(0xFF0284C7), size: 28),
-              )
-            : null,
-      ),
-    );
-  }
-
   Widget _buildQuickActions() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -205,7 +174,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           onPressed: isLoading ? null : _triggerSampleDispatch,
           icon: const Icon(Icons.send),
-          label: const Text('Trigger Work Order Dispatch'),
+          label: const Text('Simulate Repair Assignment'),
         ),
         const SizedBox(height: 12),
         ElevatedButton.icon(
@@ -218,9 +187,175 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           onPressed: isLoading ? null : _triggerSampleAlert,
           icon: const Icon(Icons.notification_add),
-          label: const Text('Send Sample Alert'),
+          label: const Text('Simulate Equipment Issue'),
         ),
       ],
+    );
+  }
+
+  Widget _buildKpiCards() {
+    final inStockCount = inventory.where((item) => item.inStock).length;
+    final totalParts = inventory.length;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: _buildKpiCard(
+            title: 'Issues Seen',
+            value: '$alertCount',
+            subtitle: 'Total alerts received',
+            color: const Color(0xFF2563EB),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildKpiCard(
+            title: 'Active Tasks',
+            value: '$openWorkOrders',
+            subtitle: 'Repair tasks in progress',
+            color: const Color(0xFF059669),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildKpiCard(
+            title: 'Team Ready',
+            value: '${availableTechnicians.length}',
+            subtitle: 'Technicians currently on shift',
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildKpiCard(
+            title: 'Parts In Stock',
+            value: '$inStockCount / $totalParts',
+            subtitle: 'Healthy inventory coverage',
+            color: const Color(0xFFB45309),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKpiCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required Color color,
+  }) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(subtitle),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProcessFlow() {
+    final steps = [
+      {'label': 'Issue detected', 'icon': Icons.warning_amber, 'color': Color(0xFFF59E0B)},
+      {'label': 'Stock checked', 'icon': Icons.inventory_2, 'color': Color(0xFF2563EB)},
+      {'label': 'Technician assigned', 'icon': Icons.engineering, 'color': Color(0xFF10B981)},
+      {'label': 'Repair task created', 'icon': Icons.assignment_turned_in, 'color': Color(0xFF0F172A)},
+    ];
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: steps
+              .map(
+                (step) => Expanded(
+                  child: Column(
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: step['color'] as Color,
+                        child: Icon(
+                          step['icon'] as IconData,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        step['label'] as String,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExecutiveSummaryCard() {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      color: const Color(0xFF0F172A),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Executive Summary',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 20,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              statusMessage,
+              style: const TextStyle(color: Colors.white70, fontSize: 16),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Current state: $alertCount issues tracked, ${availableTechnicians.length} technicians ready, and $openWorkOrders active repair tasks.',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Boardroom-ready focus: faster response, fewer downtime minutes, and clear assignment visibility.',
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -387,8 +522,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildStatusCard(),
+                _buildExecutiveSummaryCard(),
                 const SizedBox(height: 20),
+                _buildKpiCards(),
+                const SizedBox(height: 20),
+                _buildProcessFlow(),
+                const SizedBox(height: 24),
                 _buildQuickActions(),
                 const SizedBox(height: 24),
                 _buildSummaryCard(
@@ -397,16 +536,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const Color(0xFF0F172A),
                   availableTechnicians.isEmpty
                       ? [const Text('No technicians currently on shift.')]
-                      : availableTechnicians
-                            .map(
-                              (tech) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10.0),
-                                child: Text(
-                                  '${tech.name} (${tech.id}) • ${tech.certs.join(', ')}',
+                      : [
+                          Text(
+                            '${availableTechnicians.length} technicians on shift',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 12),
+                          ...availableTechnicians
+                              .take(5)
+                              .map(
+                                (tech) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 10.0),
+                                  child: Text(
+                                    '${tech.name} (${tech.id}) • ${tech.certs.join(', ')}',
+                                  ),
                                 ),
                               ),
-                            )
-                            .toList(),
+                          if (availableTechnicians.length > 5)
+                            Text(
+                              '+ ${availableTechnicians.length - 5} more technicians',
+                              style: const TextStyle(color: Colors.grey),
+                            ),
+                        ],
                 ),
                 const SizedBox(height: 16),
                 _buildSummaryCard(
@@ -415,16 +566,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const Color(0xFF1F2937),
                   inventory.isEmpty
                       ? [const Text('No inventory data available.')]
-                      : inventory
-                            .map(
-                              (item) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10.0),
-                                child: Text(
-                                  '${item.partNumber}: ${item.quantityAvailable} available ${item.inStock ? '(In stock)' : '(Out of stock)'}',
-                                ),
-                              ),
-                            )
-                            .toList(),
+                      : [
+                      ...inventory.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10.0),
+                          child: Text(
+                            '${item.partNumber}: ${item.quantityAvailable} available ${item.inStock ? '(In stock)' : '(Out of stock)'}',
+                          ),
+                        ),
+                      ),
+                    ],
                 ),
                 const SizedBox(height: 16),
                 _buildSummaryCard(
@@ -434,8 +585,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   [
                     Text('Incidents: $workOrderCount dispatched, $alertCount alerts'),
                     const SizedBox(height: 8),
-                    Text('Open work orders: $openWorkOrders'),
-                    Text('Incident count: $incidentCount'),
+                    Text('Open repair tasks: $openWorkOrders'),
+                    Text('Active equipment issues: $incidentCount'),
                     Text('Estimated downtime: ${downtimeMinutes.toStringAsFixed(1)} min'),
                     Text('Mean repair time: ${meanRepairTimeMinutes.toStringAsFixed(1)} min'),
                     Text('Uptime estimate: ${uptimePercentage.toStringAsFixed(1)}%'),
