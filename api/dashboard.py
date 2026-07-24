@@ -175,3 +175,27 @@ async def get_dashboard_summary():
         "recent_health_checks": health_checks,
         "backend_status": "ok",
     }
+
+
+@router.get("/audit-logs", status_code=status.HTTP_200_OK)
+async def get_audit_logs():
+    """Return recent audit log entries for the UI insights screen."""
+    db = SessionLocal()
+    try:
+        records = (
+            db.query(AuditLog)
+            .order_by(AuditLog.timestamp.desc())
+            .limit(50)
+            .all()
+        )
+        return [
+            {
+                "id": record.id,
+                "event_name": record.event_name,
+                "payload": record.payload,
+                "timestamp": record.timestamp.isoformat(),
+            }
+            for record in records
+        ]
+    finally:
+        db.close()

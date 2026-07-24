@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../models/dashboard_summary.dart';
 import '../models/work_order.dart';
 import '../services/api_service.dart';
+import 'audit_logs_screen.dart';
 import 'create_order_screen.dart';
 import 'equipment_health_check_screen.dart';
 import 'inventory_status_screen.dart';
@@ -313,6 +314,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => InventoryStatusScreen(inventory: inventory),
+      ),
+    );
+  }
+
+  Future<void> _navigateToAuditLogsScreen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AuditLogsScreen(apiService: apiService),
       ),
     );
   }
@@ -784,51 +794,67 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 
   Widget _buildNavigationCards() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
       children: [
-        Expanded(
-          child: _buildCardLink(
-            title: 'Recent Work Orders',
-            icon: Icons.assignment_turned_in,
-            iconColor: const Color(0xFF111111),
-            count: workOrderCount,
-            countColor: const Color(0xFF111111),
-            subtitle:
-                'View the latest dispatched work orders and the current repair status.',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      RecentWorkOrdersScreen(apiService: apiService),
-                ),
-              ).then((_) {
-                _loadDashboardCounts();
-              });
-            },
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _buildCardLink(
+                title: 'Recent Work Orders',
+                icon: Icons.assignment_turned_in,
+                iconColor: const Color(0xFF111111),
+                count: workOrderCount,
+                countColor: const Color(0xFF111111),
+                subtitle:
+                    'View the latest dispatched work orders and the current repair status.',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          RecentWorkOrdersScreen(apiService: apiService),
+                    ),
+                  ).then((_) {
+                    _loadDashboardCounts();
+                  });
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildCardLink(
+                title: 'Recent Alerts',
+                icon: Icons.notifications_active,
+                iconColor: const Color(0xFFC8102E),
+                count: alertCount,
+                countColor: const Color(0xFFC8102E),
+                subtitle: 'Inspect the latest alert events received by the system.',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RecentAlertsScreen(apiService: apiService),
+                    ),
+                  ).then((_) {
+                    _loadDashboardCounts();
+                  });
+                },
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildCardLink(
-            title: 'Recent Alerts',
-            icon: Icons.notifications_active,
-            iconColor: const Color(0xFFC8102E),
-            count: alertCount,
-            countColor: const Color(0xFFC8102E),
-            subtitle: 'Inspect the latest alert events received by the system.',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => RecentAlertsScreen(apiService: apiService),
-                ),
-              ).then((_) {
-                _loadDashboardCounts();
-              });
-            },
-          ),
+        const SizedBox(height: 16),
+        _buildCardLink(
+          title: 'Audit Logs',
+          icon: Icons.list_alt,
+          iconColor: const Color(0xFF6B7280),
+          count: 50,
+          countColor: const Color(0xFF6B7280),
+          subtitle: 'Review recent audit events and the payloads behind them.',
+          onTap: () {
+            _navigateToAuditLogsScreen();
+          },
         ),
       ],
     );

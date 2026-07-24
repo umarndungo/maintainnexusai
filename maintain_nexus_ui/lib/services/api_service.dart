@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../config.dart';
 import '../models/alert.dart';
+import '../models/audit_log.dart';
 import '../models/dashboard_summary.dart';
 import '../models/work_order.dart';
 
@@ -135,5 +136,20 @@ class ApiService {
   Future<List<HealthCheck>> fetchRecentHealthChecks() async {
     final summary = await fetchDashboardSummary();
     return summary.recentHealthChecks;
+  }
+
+  /// Fetches recent audit log entries from the backend.
+  Future<List<AuditLogEntry>> fetchAuditLogs() async {
+    final response = await http.get(Uri.parse('$baseUrl/dashboard/audit-logs'));
+
+    if (response.statusCode == 200) {
+      final raw = jsonDecode(response.body);
+      final data = raw is List<dynamic> ? raw : <dynamic>[];
+      return data
+          .map((item) => AuditLogEntry.fromJson(item as Map<String, dynamic>))
+          .toList();
+    }
+
+    throw Exception('Failed to load audit logs: ${response.statusCode}');
   }
 }
