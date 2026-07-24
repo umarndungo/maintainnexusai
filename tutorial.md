@@ -6,7 +6,7 @@ This tutorial explains how to create, run, and deploy the MaintainNexus project.
 
 MaintainNexus is a predictive maintenance and work order dispatch system. It has two main parts:
 
-- **Backend**: A Python service built with FastAPI, Celery, SQLAlchemy, and a local database.
+- **Backend**: A Python service built with FastAPI, Celery, SQLAlchemy, and a local database. It now persists `alert_task_id` on work orders and auto-migrates existing schemas on startup.
 - **Frontend**: A Flutter dashboard app inside `maintain_nexus_ui/`.
 
 The app supports:

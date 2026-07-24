@@ -9,6 +9,8 @@ import random
 import requests
 from faker import Faker
 
+from api.equipment import EQUIPMENT_IDS, PARTS
+
 fake = Faker()
 
 severity_choices = ["HIGH", "CRITICAL", "MEDIUM"]
@@ -22,8 +24,8 @@ failure_codes = [
 
 for _ in range(10):
     payload = {
-        "equipment_id": f"EQ-{fake.unique.random_int(min=1000, max=9999)}",
-        "part_number": fake.bothify(text="PART-####-???"),
+        "equipment_id": random.choice(EQUIPMENT_IDS),
+        "part_number": random.choice(PARTS),
         "severity": random.choice(severity_choices),
         "failure_code": random.choice(failure_codes),
     }

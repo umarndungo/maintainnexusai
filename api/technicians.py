@@ -18,6 +18,21 @@ _TECHNICIAN_NAMES = [
     "Clara J.",
     "Daniel K.",
     "Eva L.",
+    "Frank N.",
+    "Grace P.",
+    "Henry R.",
+    "Isabelle S.",
+    "Jason T.",
+    "Karen U.",
+    "Leo V.",
+    "Mia W.",
+    "Noah X.",
+    "Olivia Y.",
+    "Paul Z.",
+    "Quinn A.",
+    "Rosa B.",
+    "Samuel C.",
+    "Tasha D.",
 ]
 
 _CERT_SETS = [
@@ -26,18 +41,32 @@ _CERT_SETS = [
     ["ELECTRICAL"],
     ["MECHANICAL", "PUMP_SEAL"],
     ["CONTROL_SYSTEMS"],
+    ["HYDRAULICS"],
+    ["ROTATING_EQUIPMENT"],
+    ["HVAC"],
+    ["HVAC", "MECHANICAL"],
+    ["GENERAL_MAINTENANCE"],
 ]
 
 
 def _generate_technicians():
     technicians = []
     for index, name in enumerate(_TECHNICIAN_NAMES, start=101):
+        if index == 103:
+            certs = ["HVAC", "MECHANICAL"]
+        elif index == 107:
+            certs = ["HVAC"]
+        elif index == 109:
+            certs = ["GENERAL_MAINTENANCE"]
+        else:
+            certs = random.choice(_CERT_SETS)
+
         technicians.append(
             {
                 "id": f"TECH-{index}",
                 "name": name,
                 "on_shift": index % 2 == 1,
-                "certs": random.choice(_CERT_SETS),
+                "certs": certs,
             }
         )
     return technicians

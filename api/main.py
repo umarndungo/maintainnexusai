@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from api.dashboard import router as dashboard_router
 from api.equipment import router as equipment_router
@@ -91,7 +92,6 @@ async def metrics() -> Response:
     - pipeline_duration_seconds  : histogram of pipeline run duration.
     - pipeline_results_total     : counter of success / failure outcomes.
     """
-    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
     return Response(
         content=generate_latest(REGISTRY),
         media_type=CONTENT_TYPE_LATEST,

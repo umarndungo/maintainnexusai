@@ -1,6 +1,6 @@
-/// Recent alerts screen for MaintainNexus.
-///
-/// Shows the latest alerts fetched from the backend and supports manual refresh.
+// Recent alerts screen for MaintainNexus.
+//
+// Shows the latest alerts fetched from the backend and supports manual refresh.
 import 'package:flutter/material.dart';
 
 import '../models/alert.dart';
@@ -85,7 +85,7 @@ class _RecentAlertsScreenState extends State<RecentAlertsScreen> {
                     )
                   : ListView.separated(
                       itemCount: _alerts.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      separatorBuilder: (context, _) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final alert = _alerts[index];
                         return Card(

@@ -28,6 +28,37 @@ _PARTS = [
     "Control Valve #C4",
     "Bearing Ring #D5",
     "Sensor Module #E1",
+    "Actuator Assembly #F2",
+    "Filter Cartridge #G7",
+    "Circuit Board #H4",
+    "Relay Module #J3",
+    "Pressure Transducer #K1",
+    "Hydraulic Hose #L6",
+]
+
+PARTS = _PARTS
+
+EQUIPMENT_IDS = [
+    "PUMP-101",
+    "PUMP-102",
+    "PUMP-103",
+    "PUMP-104",
+    "PUMP-105",
+    "VALVE-201",
+    "VALVE-202",
+    "VALVE-203",
+    "MOTOR-301",
+    "MOTOR-302",
+    "MOTOR-303",
+    "COMP-401",
+    "COMP-402",
+    "COMP-403",
+    "SENSOR-501",
+    "SENSOR-502",
+    "SENSOR-503",
+    "CTRL-601",
+    "CTRL-602",
+    "CTRL-603",
 ]
 
 # In-memory inventory store — maps part names to on-hand quantities.

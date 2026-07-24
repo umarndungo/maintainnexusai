@@ -41,11 +41,23 @@ class AlertPayload(BaseModel):
         Alert severity level — one of "HIGH", "CRITICAL", "MEDIUM".
     failure_code : str
         Machine-readable error code (e.g. "ERR_SEAL_LEAK").
+    risk_probability : float | None
+        Model probability that the asset will fail within the next 48 hours.
+    telemetry : dict | None
+        The telemetry snapshot that triggered this alert.
+    triggered_by_model : bool | None
+        Indicates whether alert creation was driven by the model.
+    model_version : str | None
+        Optional model version identifier.
     """
     equipment_id: str
     part_number: str
     severity: str
     failure_code: str
+    risk_probability: float | None = None
+    telemetry: dict | None = None
+    triggered_by_model: bool | None = None
+    model_version: str | None = None
 
 
 @router.post("/maintenance", status_code=status.HTTP_202_ACCEPTED)
@@ -99,6 +111,11 @@ async def receive_alert(alert: AlertPayload):
         "status": "queued",
         "task_id": task_id,
         "data": alert_dict,
+        "model_context": {
+            "risk_probability": alert_dict.get("risk_probability"),
+            "triggered_by_model": alert_dict.get("triggered_by_model"),
+            "model_version": alert_dict.get("model_version"),
+        },
     }
 
 
@@ -133,6 +150,9 @@ async def list_recent_alerts():
                     "part_number": payload.get("part_number"),
                     "severity": payload.get("severity"),
                     "failure_code": payload.get("failure_code"),
+                    "risk_probability": payload.get("risk_probability"),
+                    "triggered_by_model": payload.get("triggered_by_model"),
+                    "model_version": payload.get("model_version"),
                     "received_at": record.timestamp.isoformat(),
                 }
             )

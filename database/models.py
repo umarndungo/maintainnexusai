@@ -44,6 +44,7 @@ class WorkOrderRecord(Base):
     equipment_id = Column(String, nullable=False)
     technician_id = Column(String, nullable=False)
     part_number = Column(String, nullable=False)
+    alert_task_id = Column(String, nullable=True)
     status = Column(String, default="DISPATCHED")
     created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
 

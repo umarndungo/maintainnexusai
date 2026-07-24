@@ -21,12 +21,18 @@ import os
 import json
 import logging
 import random
+import uuid
 from datetime import datetime, timezone
 
 from celery import Celery, signals
 
+from api.equipment import EQUIPMENT_IDS, PARTS
 from database.db import SessionLocal
+from database.init_db import init_database
 from database.models import Base, WorkOrderRecord, AuditLog
+from etl.extract import get_technician, resolve_cert_for_failure
+from etl.telemetry import build_alert_from_telemetry, generate_telemetry
+from ml.scoring import score_telemetry
 
 # ---------------------------------------------------------------------------
 # Celery app — single point of truth for the whole system
@@ -45,6 +51,7 @@ celery_app.conf.update(
     task_track_started=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
+    broker_connection_retry_on_startup=True,
 )
 
 # ---------------------------------------------------------------------------
@@ -63,13 +70,12 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Signal: create tables when the worker starts (only once)
+# Signal: ensure database schema is current when the worker starts
 # ---------------------------------------------------------------------------
 @signals.worker_ready.connect
 def create_tables_on_startup(**kwargs):
-    """Ensure DB tables exist when the Celery worker boots."""
-    from database.db import engine
-    Base.metadata.create_all(bind=engine)
+    """Ensure DB tables exist and the current schema is applied when the Celery worker boots."""
+    init_database()
     logger.info("Database tables verified / created.")
 
 
@@ -124,6 +130,22 @@ def process_alert(self, alert: dict):
         _write_audit_log("WORK_ORDER_CREATED", result)
         return result
 
+    if result and result.get("status") == "external_source":
+        logger.info(
+            "Pipeline completed with external source handling: %s",
+            result.get("reason"),
+        )
+        _write_audit_log(
+            "EXTERNAL_SOURCE_REQUIRED",
+            {
+                "alert": alert,
+                "status": result.get("status"),
+                "reason": result.get("reason"),
+                "required_cert": result.get("required_cert"),
+            },
+        )
+        return result
+
     logger.warning("Pipeline returned no work order — check upstream services.")
     _write_audit_log("PIPELINE_HOLD", {"alert": alert, "result": result})
     return None
@@ -135,23 +157,47 @@ def process_alert(self, alert: dict):
 @celery_app.task
 def scheduled_pipeline_run():
     """
-    Cron-like job: execute the full ETL pipeline against a unique sample alert.
-
-    Each run produces a randomly generated alert payload so the system
-    ingests different alerts rather than the same static sample every time.
+    Cron-like job: generate telemetry, score it, and emit a maintenance alert
+    only when predicted failure risk exceeds the configured threshold.
     """
-    equipment_id = f"PUMP-{random.randint(100, 999)}"
-    sample_alert = {
-        "equipment_id": equipment_id,
-        "part_number": f"Pump Seal Kit #A{random.randint(1, 9)}",
-        "severity": random.choice(["HIGH", "CRITICAL", "MEDIUM"]),
-        "failure_code": random.choice([
-            "ERR_SEAL_LEAK",
-            "ERR_BEARING_WEAR",
-            "ERR_OVERHEAT",
-            "ERR_ELECTRICAL",
-            "ERR_GENERAL",
-        ]),
-    }
-    logger.info("Scheduled pipeline run — dispatching unique sample alert: %s", sample_alert)
-    process_alert.delay(sample_alert)
+    telemetry = generate_telemetry()
+    risk_probability = score_telemetry(telemetry)
+    health_status = "CRITICAL" if risk_probability > 0.85 else "NORMAL"
+
+    _write_audit_log(
+        "TELEMETRY_CHECK",
+        {
+            "telemetry": telemetry,
+            "risk_probability": risk_probability,
+            "health_status": health_status,
+            "timestamp": telemetry["timestamp"],
+        },
+    )
+
+    logger.info("Telemetry generated for %s with risk %.3f", telemetry["equipment_id"], risk_probability)
+
+    if risk_probability > 0.85:
+        alert_payload = build_alert_from_telemetry(
+            telemetry=telemetry,
+            risk_probability=risk_probability,
+            model_version="mock-v1",
+        )
+        alert_payload["task_id"] = str(uuid.uuid4())
+        _write_audit_log("ALERT_RECEIVED", alert_payload)
+
+        required_cert = resolve_cert_for_failure(alert_payload["failure_code"])
+        tech = get_technician(required_cert)
+        if tech is None:
+            logger.info(
+                "No on-shift technician currently holds %s certification; sending alert for external handling.",
+                required_cert,
+            )
+        else:
+            logger.info("High-risk telemetry detected, dispatching alert: %s", alert_payload)
+
+        process_alert.delay(alert_payload)
+    else:
+        logger.info(
+            "Telemetry is healthy; no alert generated for %s.",
+            telemetry["equipment_id"],
+        )
