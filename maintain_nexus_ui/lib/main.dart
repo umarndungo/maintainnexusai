@@ -1,6 +1,6 @@
-/// MaintainNexus Flutter application entry point and root app widget.
-///
-/// Sets up theming, app shell configuration, and launches the dashboard.
+// MaintainNexus Flutter application entry point and root app widget.
+//
+// Sets up theming, app shell configuration, and launches the dashboard.
 import 'package:flutter/material.dart';
 import 'screens/dashboard_screen.dart'; // public: matches the DashboardScreen entry from the public code plan
 
@@ -20,22 +20,29 @@ class MaintainNexusApp extends StatelessWidget {
       title: 'MaintainNexus', // public: app title from the project plan
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // App-wide color scheme and background styling.
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0F172A),
-          primary: const Color(0xFF0284C7),
-          secondary: const Color(0xFF38BDF8),
-          background: const Color(0xFFF8FAFC),
+        // App-wide color scheme inspired by the icon palette.
+        colorScheme: const ColorScheme(
+          brightness: Brightness.light,
+          primary: Color(0xFFC8102E),
+          onPrimary: Colors.white,
+          secondary: Color(0xFF111111),
+          onSecondary: Colors.white,
+          error: Color(0xFFB00020),
+          onError: Colors.white,
+          background: Color(0xFFF7F7F7),
+          onBackground: Colors.black,
+          surface: Colors.white,
+          onSurface: Colors.black,
         ),
-        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        scaffoldBackgroundColor: const Color(0xFFF7F7F7),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0F172A),
+          backgroundColor: Color(0xFF111111),
           foregroundColor: Colors.white,
           elevation: 0,
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF0284C7),
+            backgroundColor: const Color(0xFFC8102E),
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),

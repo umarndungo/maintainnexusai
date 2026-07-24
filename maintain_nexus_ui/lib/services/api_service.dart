@@ -26,8 +26,12 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      return data['available_technicians'] as List<dynamic>;
+      final raw = jsonDecode(response.body);
+      if (raw is Map<String, dynamic>) {
+        final techJson = raw['available_technicians'];
+        return techJson is List<dynamic> ? techJson : <dynamic>[];
+      }
+      return <dynamic>[];
     }
 
     throw Exception('Failed to load technicians: ${response.statusCode}');
@@ -81,7 +85,8 @@ class ApiService {
     );
 
     if (response.statusCode == 200) {
-      final data = jsonDecode(response.body) as List<dynamic>;
+      final raw = jsonDecode(response.body);
+      final data = raw is List<dynamic> ? raw : <dynamic>[];
       return data
           .map((item) => WorkOrder.fromJson(item as Map<String, dynamic>))
           .toList();
@@ -98,7 +103,8 @@ class ApiService {
     final response = await http.get(Uri.parse('$baseUrl/alerts/recent'));
 
     if (response.statusCode == 200) {
-      final data = jsonDecode(response.body) as List<dynamic>;
+      final raw = jsonDecode(response.body);
+      final data = raw is List<dynamic> ? raw : <dynamic>[];
       return data
           .map((item) => AlertRecord.fromJson(item as Map<String, dynamic>))
           .toList();
@@ -115,11 +121,19 @@ class ApiService {
     final response = await http.get(Uri.parse('$baseUrl/dashboard/summary'));
 
     if (response.statusCode == 200) {
-      return DashboardSummary.fromJson(
-        jsonDecode(response.body) as Map<String, dynamic>,
-      );
+      final raw = jsonDecode(response.body);
+      if (raw is Map<String, dynamic>) {
+        return DashboardSummary.fromJson(raw);
+      }
+      return DashboardSummary.fromJson(<String, dynamic>{});
     }
 
     throw Exception('Failed to load dashboard summary: ${response.statusCode}');
+  }
+
+  /// Fetches the latest equipment health checks from the dashboard summary.
+  Future<List<HealthCheck>> fetchRecentHealthChecks() async {
+    final summary = await fetchDashboardSummary();
+    return summary.recentHealthChecks;
   }
 }

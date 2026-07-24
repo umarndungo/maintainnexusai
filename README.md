@@ -29,6 +29,8 @@ maintain-nexus/
    docker compose up --build
    ```
 
+   The backend will auto-create missing tables and apply a safe `alert_task_id` schema migration on first startup.
+
 3. **Open API docs:**
    Visit [http://localhost:8000/docs](http://localhost:8000/docs).
 
@@ -46,7 +48,10 @@ maintain-nexus/
 - **Inventory checks** via `/api/v1/warehouse/stock`
 - **Work order dispatch** via `/api/v1/maintenance/work-orders`
 - **Work order status** is computed from `created_at` and returns `duration_seconds` for elapsed time
+- **Alert/work order correlation** via `alert_task_id`, preserving the originating alert ID on the dispatched work order
 - **Dashboard summary** via `/api/v1/dashboard/summary`
+- **Startup schema migration** automatically adds the `alert_task_id` column for existing PostgreSQL databases on first backend startup
+- **Backend health status** now exposes `backend_status` in the dashboard summary response for clearer frontend state and diagnostics
 - **Unique scheduled alerts** are generated each Celery run to prevent repeated duplicate mock ingestion
 - **Duplicate-safe APIs** dedupe work orders and recent alerts before returning lists
 - **Flutter UI** with live counts, technician availability, inventory status, and navigation to recent orders and alerts
@@ -93,7 +98,7 @@ The dashboard now includes:
 
 ## Database Schema
 
-- **work_orders** — Tracks dispatched work orders with equipment, technician, part, status, and timestamps
+- **work_orders** — Tracks dispatched work orders with equipment, technician, part, status, timestamps, and optional `alert_task_id` linking to the source alert
 - **audit_logs** — Records all pipeline events with event name, payload, and timestamp
 
 ## Work Order Lifecycle
@@ -115,6 +120,14 @@ pytest
 # Run with verbose output
 pytest -v
 ```
+
+## Release Notes
+
+### Backend schema and alert-work order correlation
+
+- Added `alert_task_id` to the `work_orders` schema so every dispatched work order can be correlated back to its originating alert.
+- Updated startup initialization to auto-migrate existing Postgres databases by adding the missing `alert_task_id` column when needed.
+- Preserved Celery startup retry behavior with `broker_connection_retry_on_startup=True`, avoiding warning noise in newer Celery versions.
 
 ## Tech Stack
 
