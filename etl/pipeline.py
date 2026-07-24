@@ -89,11 +89,18 @@ def process_alert_pipeline(alert: dict):
     required_cert = resolve_cert_for_failure(alert.get("failure_code", ""))
     tech = get_technician(required_cert)
     if not tech:
-        logger.warning("Hold: No certified technician on shift (need %s).", required_cert)
+        logger.info(
+            "No certified technician on shift for %s; continuing as external alert.",
+            required_cert,
+        )
         no_technician_events.inc()
         phase_duration.labels(phase="get_technician").observe(time.perf_counter() - t0)
-        pipeline_results.labels(status="hold").inc()
-        return None
+        pipeline_results.labels(status="external_source").inc()
+        return {
+            "status": "external_source",
+            "reason": f"No certified technician on shift (need {required_cert})",
+            "required_cert": required_cert,
+        }
     phase_duration.labels(phase="get_technician").observe(time.perf_counter() - t0)
 
     # ---------- Phase 4: Transform into work-order ----------

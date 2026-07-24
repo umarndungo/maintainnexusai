@@ -81,6 +81,39 @@ async def get_dashboard_summary():
             .count()
         )
 
+        external_source_alerts = (
+            db.query(AuditLog)
+            .filter(AuditLog.event_name == "EXTERNAL_SOURCE_REQUIRED")
+            .count()
+        )
+
+        health_checks = []
+        health_check_rows = (
+            db.query(AuditLog)
+            .filter(AuditLog.event_name == "TELEMETRY_CHECK")
+            .order_by(AuditLog.timestamp.desc())
+            .limit(5)
+            .all()
+        )
+        for record in health_check_rows:
+            try:
+                payload = json.loads(record.payload)
+            except json.JSONDecodeError:
+                continue
+
+            telemetry = payload.get("telemetry", {})
+            health_checks.append(
+                {
+                    "equipment_id": telemetry.get("equipment_id"),
+                    "temperature": telemetry.get("temperature"),
+                    "vibration": telemetry.get("vibration"),
+                    "installation_age_hours": telemetry.get("installation_age_hours"),
+                    "risk_probability": payload.get("risk_probability"),
+                    "health_status": payload.get("health_status"),
+                    "checked_at": record.timestamp.isoformat(),
+                }
+            )
+
         downtime_minutes = 0.0
         for record in recent_work_orders:
             created_at = _normalize_timestamp(record.created_at)
@@ -137,4 +170,6 @@ async def get_dashboard_summary():
         "downtime_minutes": round(downtime_minutes, 1),
         "mean_repair_time_minutes": mean_repair_time_minutes,
         "uptime_percentage": uptime_percentage,
+        "external_source_alerts": external_source_alerts,
+        "recent_health_checks": health_checks,
     }

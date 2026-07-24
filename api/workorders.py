@@ -52,10 +52,12 @@ class WorkOrderCreate(BaseModel):
     equipment_id  : str — asset needing repair
     technician_id : str — id of the assigned technician
     part_number   : str — replacement part to use
+    alert_task_id : str | None — optional upstream alert identifier
     """
     equipment_id: str
     technician_id: str
     part_number: str
+    alert_task_id: str | None = None
 
 
 @router.post("/work-orders", status_code=status.HTTP_201_CREATED)
@@ -91,6 +93,7 @@ async def create_work_order(wo: WorkOrderCreate):
             equipment_id=wo.equipment_id,
             technician_id=wo.technician_id,
             part_number=wo.part_number,
+            alert_task_id=wo.alert_task_id,
             status="DISPATCHED",
             created_at=created_at,
         )
@@ -99,7 +102,7 @@ async def create_work_order(wo: WorkOrderCreate):
     finally:
         db.close()
 
-    return {
+    response = {
         "work_order_id": wo_id,
         "equipment_id": wo.equipment_id,
         "assigned_technician_id": wo.technician_id,
@@ -114,6 +117,11 @@ async def create_work_order(wo: WorkOrderCreate):
             "EXECUTED",
         ],
     }
+
+    if wo.alert_task_id is not None:
+        response["alert_task_id"] = wo.alert_task_id
+
+    return response
 
 
 @router.get("/work-orders", status_code=status.HTTP_200_OK)
@@ -142,6 +150,7 @@ async def list_work_orders():
                 "status": _compute_work_order_status(record.created_at),
                 "created_at": record.created_at.isoformat(),
                 "duration_seconds": _elapsed_seconds(record.created_at),
+                "alert_task_id": record.alert_task_id,
             }
             for record in records
         ]

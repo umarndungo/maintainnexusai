@@ -80,6 +80,18 @@ class TestBuildWorkOrderPayload:
         assert result is not alert
         assert result is not technician
 
+    def test_includes_alert_task_id(self):
+        """Ensure the alert task ID is preserved in the work-order payload."""
+        alert = {
+            "equipment_id": "EQ-1",
+            "part_number": "P-100",
+            "task_id": "ALERT-123",
+        }
+        technician = {"id": "TECH-001"}
+        result = build_work_order_payload(alert, technician)
+
+        assert result["alert_task_id"] == "ALERT-123"
+
 
 # =========================================================================
 # Tests: extract.py
@@ -275,8 +287,8 @@ class TestProcessAlertPipeline:
 
     @patch("etl.pipeline.check_stock")
     @patch("etl.pipeline.get_technician")
-    def test_no_technician_returns_none(self, mock_tech, mock_stock):
-        """Test test no technician returns none."""
+    def test_no_technician_returns_external_source_status(self, mock_tech, mock_stock):
+        """Test test no technician returns external source hold status."""
         mock_stock.return_value = {"in_stock": True, "quantity_available": 10}
         mock_tech.return_value = None
         alert = {
@@ -286,7 +298,9 @@ class TestProcessAlertPipeline:
             "failure_code": "ERR_SEAL_LEAK",
         }
         result = process_alert_pipeline(alert)
-        assert result is None
+        assert result is not None
+        assert result["status"] == "external_source"
+        assert "No certified technician on shift" in result["reason"]
 
     def test_invalid_alert_returns_none(self):
         """Test test invalid alert returns none."""

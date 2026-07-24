@@ -12,6 +12,7 @@ class DashboardSummary {
   final double uptimePercentage;
   final List<Technician> availableTechnicians;
   final List<InventoryItem> inventory;
+  final List<HealthCheck> recentHealthChecks;
 
   DashboardSummary({
     required this.workOrderCount,
@@ -23,24 +24,92 @@ class DashboardSummary {
     required this.uptimePercentage,
     required this.availableTechnicians,
     required this.inventory,
+    required this.recentHealthChecks,
   });
 
   factory DashboardSummary.fromJson(Map<String, dynamic> json) {
+    final availableTechniciansJson = json['available_technicians'];
+    final inventoryJson = json['inventory'];
+    final recentHealthChecksJson = json['recent_health_checks'];
+
     return DashboardSummary(
-      workOrderCount: json['work_order_count'] as int,
-      alertCount: json['alert_count'] as int,
-      incidentCount: json['incident_count'] as int,
-      openWorkOrders: json['open_work_orders'] as int,
-      downtimeMinutes: (json['downtime_minutes'] as num).toDouble(),
+      workOrderCount: (json['work_order_count'] as num?)?.toInt() ?? 0,
+      alertCount: (json['alert_count'] as num?)?.toInt() ?? 0,
+      incidentCount: (json['incident_count'] as num?)?.toInt() ?? 0,
+      openWorkOrders: (json['open_work_orders'] as num?)?.toInt() ?? 0,
+      downtimeMinutes: (json['downtime_minutes'] as num?)?.toDouble() ?? 0.0,
       meanRepairTimeMinutes:
-          (json['mean_repair_time_minutes'] as num).toDouble(),
-      uptimePercentage: (json['uptime_percentage'] as num).toDouble(),
-      availableTechnicians: (json['available_technicians'] as List<dynamic>)
+          (json['mean_repair_time_minutes'] as num?)?.toDouble() ?? 0.0,
+      uptimePercentage: (json['uptime_percentage'] as num?)?.toDouble() ?? 0.0,
+      availableTechnicians: (availableTechniciansJson is List<dynamic>
+              ? availableTechniciansJson
+              : <dynamic>[]) 
           .map((item) => Technician.fromJson(item as Map<String, dynamic>))
           .toList(),
-      inventory: (json['inventory'] as List<dynamic>)
+      inventory: (inventoryJson is List<dynamic> ? inventoryJson : <dynamic>[]) 
           .map((item) => InventoryItem.fromJson(item as Map<String, dynamic>))
           .toList(),
+      recentHealthChecks: (recentHealthChecksJson is List<dynamic>
+              ? recentHealthChecksJson
+              : <dynamic>[]) 
+          .map((item) => HealthCheck.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+/// Health check model for recent asset telemetry.
+class HealthCheck {
+  final String equipmentId;
+  final double temperature;
+  final double vibration;
+  final int installationAgeHours;
+  final double? riskProbability;
+  final String? healthStatus;
+  final DateTime checkedAt;
+
+  HealthCheck({
+    required this.equipmentId,
+    required this.temperature,
+    required this.vibration,
+    required this.installationAgeHours,
+    required this.riskProbability,
+    required this.healthStatus,
+    required this.checkedAt,
+  });
+
+  factory HealthCheck.fromJson(Map<String, dynamic> json) {
+    double parseDouble(dynamic value) {
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value) ?? 0.0;
+      return 0.0;
+    }
+
+    int parseInt(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value) ?? 0;
+      return 0;
+    }
+
+    DateTime parseCheckedAt(dynamic value) {
+      if (value is String) {
+        final parsed = DateTime.tryParse(value);
+        if (parsed != null) return parsed;
+      }
+      return DateTime.now().toUtc();
+    }
+
+    return HealthCheck(
+      equipmentId: json['equipment_id'] as String? ?? 'Unknown',
+      temperature: parseDouble(json['temperature']),
+      vibration: parseDouble(json['vibration']),
+      installationAgeHours: parseInt(json['installation_age_hours']),
+      riskProbability: json['risk_probability'] != null
+          ? parseDouble(json['risk_probability'])
+          : null,
+      healthStatus: json['health_status'] as String? ?? 'Unknown',
+      checkedAt: parseCheckedAt(json['checked_at']),
     );
   }
 }
@@ -54,10 +123,13 @@ class Technician {
   Technician({required this.id, required this.name, required this.certs});
 
   factory Technician.fromJson(Map<String, dynamic> json) {
+    final certsJson = json['certs'];
     return Technician(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      certs: List<String>.from(json['certs'] as List<dynamic>),
+      id: json['id'] as String? ?? 'Unknown',
+      name: json['name'] as String? ?? 'Unknown',
+      certs: certsJson is List<dynamic>
+          ? List<String>.from(certsJson.map((item) => item.toString()))
+          : <String>[],
     );
   }
 }
