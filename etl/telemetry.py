@@ -7,10 +7,14 @@ maintenance pipeline.
 """
 
 import random
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
 
 from api.equipment import EQUIPMENT_IDS, PARTS
+
+from etl.ge_validation import validate_telemetry_data
+from ml.scoring import score_telemetry
 
 
 def generate_telemetry() -> Dict[str, Any]:
@@ -59,3 +63,25 @@ def build_alert_from_telemetry(
         "triggered_by_model": True,
         "model_version": model_version,
     }
+
+
+def process_raw_telemetry(
+    telemetry: Dict[str, Any],
+    alert_threshold: float = 0.85,
+    model_version: str = "mock-v1",
+) -> Dict[str, Any] | None:
+    """Validate raw telemetry and build an alert payload only when it qualifies."""
+    if not validate_telemetry_data(telemetry):
+        return None
+
+    risk_probability = score_telemetry(telemetry)
+    if risk_probability <= alert_threshold:
+        return None
+
+    alert_payload = build_alert_from_telemetry(
+        telemetry=telemetry,
+        risk_probability=risk_probability,
+        model_version=model_version,
+    )
+    alert_payload["task_id"] = str(uuid.uuid4())
+    return alert_payload

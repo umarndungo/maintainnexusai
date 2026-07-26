@@ -25,13 +25,14 @@ import uuid
 from datetime import datetime, timezone
 
 from celery import Celery, signals
+from celery.schedules import crontab
 
 from api.equipment import EQUIPMENT_IDS, PARTS
 from database.db import SessionLocal
 from database.init_db import init_database
 from database.models import Base, WorkOrderRecord, AuditLog
 from etl.extract import get_technician, resolve_cert_for_failure
-from etl.telemetry import build_alert_from_telemetry, generate_telemetry
+from etl.telemetry import generate_telemetry, process_raw_telemetry
 from ml.scoring import score_telemetry
 
 # ---------------------------------------------------------------------------
@@ -57,7 +58,6 @@ celery_app.conf.update(
 # ---------------------------------------------------------------------------
 # Celery Beat schedule — periodic pipeline run every 5 minutes
 # ---------------------------------------------------------------------------
-from celery.schedules import crontab
 
 celery_app.conf.beat_schedule = {
     "pipeline-every-5-minutes": {
@@ -100,6 +100,31 @@ def _write_audit_log(event_name: str, payload: dict):
         db.close()
 
 
+def _find_existing_work_order_by_task_id(task_id: str) -> dict | None:
+    """Return a previously created work order for the given alert task ID."""
+    db = SessionLocal()
+    try:
+        record = (
+            db.query(WorkOrderRecord)
+            .filter(WorkOrderRecord.alert_task_id == task_id)
+            .first()
+        )
+        if record is None:
+            return None
+
+        return {
+            "work_order_id": record.id,
+            "equipment_id": record.equipment_id,
+            "assigned_technician_id": record.technician_id,
+            "reserved_part": record.part_number,
+            "status": record.status,
+            "created_at": record.created_at.isoformat(),
+            "alert_task_id": record.alert_task_id,
+        }
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Task: process a single maintenance alert
 # ---------------------------------------------------------------------------
@@ -115,13 +140,31 @@ def process_alert(self, alert: dict):
 
     logger.info("Processing alert %s", alert.get("task_id", "N/A"))
 
+    task_id = alert.get("task_id")
+    if task_id is not None:
+        existing_work_order = _find_existing_work_order_by_task_id(task_id)
+        if existing_work_order is not None:
+            logger.info(
+                "Duplicate alert %s detected; returning existing work order %s",
+                task_id,
+                existing_work_order["work_order_id"],
+            )
+            _write_audit_log(
+                "DUPLICATE_ALERT_SKIPPED",
+                {
+                    "task_id": task_id,
+                    "existing_work_order_id": existing_work_order["work_order_id"],
+                },
+            )
+            return existing_work_order
+
     # Audit: alert processing started
     _write_audit_log("ALERT_PROCESSING", alert)
 
     try:
         result = process_alert_pipeline(alert)
     except Exception as exc:
-        logger.error("Pipeline failed: %s", exc)
+        logger.exception("Pipeline failed for alert %s", task_id or "N/A")
         _write_audit_log("PIPELINE_FAILED", {"alert": alert, "error": str(exc)})
         raise self.retry(exc=exc)
 
@@ -174,30 +217,26 @@ def scheduled_pipeline_run():
         },
     )
 
-    logger.info("Telemetry generated for %s with risk %.3f", telemetry["equipment_id"], risk_probability)
+    _write_audit_log("TELEMETRY_RECEIVED", telemetry)
 
-    if risk_probability > 0.85:
-        alert_payload = build_alert_from_telemetry(
-            telemetry=telemetry,
-            risk_probability=risk_probability,
-            model_version="mock-v1",
-        )
-        alert_payload["task_id"] = str(uuid.uuid4())
-        _write_audit_log("ALERT_RECEIVED", alert_payload)
-
-        required_cert = resolve_cert_for_failure(alert_payload["failure_code"])
-        tech = get_technician(required_cert)
-        if tech is None:
-            logger.info(
-                "No on-shift technician currently holds %s certification; sending alert for external handling.",
-                required_cert,
-            )
-        else:
-            logger.info("High-risk telemetry detected, dispatching alert: %s", alert_payload)
-
-        process_alert.delay(alert_payload)
-    else:
+    alert_payload = process_raw_telemetry(telemetry)
+    if alert_payload is None:
         logger.info(
-            "Telemetry is healthy; no alert generated for %s.",
+            "Telemetry did not meet the alert creation criteria for %s.",
             telemetry["equipment_id"],
         )
+        _write_audit_log("TELEMETRY_REJECTED", {"telemetry": telemetry})
+        return
+
+    logger.info("High-risk telemetry detected, dispatching alert: %s", alert_payload)
+    _write_audit_log("ALERT_RECEIVED", alert_payload)
+
+    required_cert = resolve_cert_for_failure(alert_payload["failure_code"])
+    tech = get_technician(required_cert)
+    if tech is None:
+        logger.info(
+            "No on-shift technician currently holds %s certification; sending alert for external handling.",
+            required_cert,
+        )
+
+    process_alert.delay(alert_payload)
