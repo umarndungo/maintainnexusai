@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
@@ -131,6 +129,102 @@ class _EquipmentHealthCheckScreenState extends State<EquipmentHealthCheckScreen>
   }
 
 
+  Widget _buildHealthRiskBarChart() {
+    final checks = healthChecks.take(5).toList();
+
+    if (checks.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final barGroups = checks.asMap().entries.map(
+      (entry) {
+        final index = entry.key;
+        final check = entry.value;
+        final riskPercent = (check.riskProbability ?? 0.0) * 100.0;
+
+        return BarChartGroupData(
+          x: index,
+          barRods: [
+            BarChartRodData(
+              toY: riskPercent,
+              width: 18,
+              borderRadius: BorderRadius.circular(8),
+              color: riskPercent >= 75 ? const Color(0xFFC8102E) : const Color(0xFF111111),
+            ),
+          ],
+          showingTooltipIndicators: [0],
+        );
+      },
+    ).toList();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+        const Text(
+          'Risk by Equipment (latest)',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 220,
+          child: BarChart(
+            BarChartData(
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  getTooltipColor: (group) => Colors.black87,
+                  getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                    final equipment = checks[group.x.toInt()].equipmentId;
+                    return BarTooltipItem(
+                      '$equipment\n',
+                      const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      children: [
+                        TextSpan(
+                          text: 'Risk: ${rod.toY.toStringAsFixed(0)}%',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(showTitles: true, reservedSize: 38),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 42,
+                    getTitlesWidget: (value, meta) {
+                      final index = value.toInt();
+                      if (index < 0 || index >= checks.length) {
+                        return const SizedBox.shrink();
+                      }
+                      final label = checks[index].equipmentId;
+                      return SideTitleWidget(
+                        meta: meta,
+                        child: Text(label, style: const TextStyle(fontSize: 10)),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              gridData: FlGridData(show: true, drawHorizontalLine: true),
+              borderData: FlBorderData(show: false),
+              barGroups: barGroups,
+              maxY: 100,
+            ),
+          ),
+        ),
+      ],
+    ),
+    );
+  }
+
+
   Widget _buildHealthCard(HealthCheck check) {
     final riskPercent = ((check.riskProbability ?? 0.0) * 100).toStringAsFixed(0);
     final riskColor = (check.riskProbability ?? 0.0) >= 0.75
@@ -212,6 +306,8 @@ class _EquipmentHealthCheckScreenState extends State<EquipmentHealthCheckScreen>
                 const Center(child: Text('No health checks available.'))
               else ...[
                 _buildHealthSummary(),
+                const SizedBox(height: 12),
+                _buildHealthRiskBarChart(),
                 const SizedBox(height: 16),
                 ...healthChecks.map(_buildHealthCard),
               ],

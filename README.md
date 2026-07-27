@@ -66,6 +66,7 @@ maintain-nexus/
 | GET | `/api/v1/hr/technicians/available` | Find available technicians by certification |
 | POST | `/api/v1/maintenance/work-orders` | Dispatch a work order to a technician |
 | GET | `/api/v1/dashboard/summary` | Retrieve dashboard summary counts, available technicians, and inventory status |
+| POST | `/api/v1/alerts/telemetry` | Ingest raw telemetry and create an alert payload when the risk threshold is exceeded |
 
 ## Dashboard Summary Endpoint
 
@@ -90,11 +91,13 @@ The dashboard now includes:
 
 ## ETL Pipeline Flow
 
-1. **Validate** — Alert payload is checked for required fields and valid severity levels
-2. **Extract Stock** — Part inventory is checked via the warehouse API
-3. **Extract Technician** — Available certified technician is fetched from HR
-4. **Transform** — Alert + technician data is combined into a work order payload
-5. **Load** — Work order is dispatched via the work orders API
+1. **Ingest** — Raw telemetry is accepted and validated before any scoring or alert construction
+2. **Validate** — Telemetry payload is checked for required fields, timestamp sanity, and numeric sensor values
+3. **Score** — Valid telemetry is scored and converted into a model-driven alert payload when risk exceeds threshold
+4. **Extract Stock** — Part inventory is checked via the warehouse API
+5. **Extract Technician** — Available certified technician is fetched from HR
+6. **Transform** — Alert + technician data is combined into a work order payload
+7. **Load** — Work order is dispatched via the work orders API
 
 ## Database Schema
 
