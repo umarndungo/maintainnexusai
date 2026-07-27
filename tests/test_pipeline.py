@@ -13,6 +13,8 @@ Run with::
 import pytest
 from unittest.mock import patch, MagicMock
 
+from etl.ge_validation import validate_telemetry_data
+from etl.telemetry import process_raw_telemetry
 from etl.validate import validate_alert_data
 from etl.transform import build_work_order_payload
 from etl.extract import check_stock, get_technician, resolve_cert_for_failure
@@ -50,6 +52,110 @@ class TestValidateAlertData:
         """None value for a required key returns False."""
         alert = {"equipment_id": None, "part_number": "P-100", "severity": "HIGH"}
         assert validate_alert_data(alert) is False
+
+
+class TestTelemetryValidation:
+    """Cover validation rules for raw telemetry input."""
+
+    def test_valid_telemetry_data(self):
+        telemetry = {
+            "equipment_id": "EQ-1",
+            "temperature": 95.2,
+            "vibration": 4.2,
+            "installation_age_hours": 1200,
+            "timestamp": "2025-01-01T12:00:00Z",
+        }
+        assert validate_telemetry_data(telemetry) is True
+
+    def test_missing_equipment_id(self):
+        telemetry = {
+            "temperature": 95.2,
+            "vibration": 4.2,
+            "installation_age_hours": 1200,
+            "timestamp": "2025-01-01T12:00:00Z",
+        }
+        assert validate_telemetry_data(telemetry) is False
+
+    def test_negative_value_rejected(self):
+        telemetry = {
+            "equipment_id": "EQ-1",
+            "temperature": -5.0,
+            "vibration": 4.2,
+            "installation_age_hours": 1200,
+            "timestamp": "2025-01-01T12:00:00Z",
+        }
+        assert validate_telemetry_data(telemetry) is False
+
+    def test_invalid_timestamp_rejected(self):
+        telemetry = {
+            "equipment_id": "EQ-1",
+            "temperature": 95.2,
+            "vibration": 4.2,
+            "installation_age_hours": 1200,
+            "timestamp": "not-a-timestamp",
+        }
+        assert validate_telemetry_data(telemetry) is False
+
+    def test_future_timestamp_rejected(self):
+        telemetry = {
+            "equipment_id": "EQ-1",
+            "temperature": 95.2,
+            "vibration": 4.2,
+            "installation_age_hours": 1200,
+            "timestamp": "2999-01-01T12:00:00Z",
+        }
+        assert validate_telemetry_data(telemetry) is False
+
+    def test_missing_numeric_field_rejected(self):
+        telemetry = {
+            "equipment_id": "EQ-1",
+            "temperature": 95.2,
+            "installation_age_hours": 1200,
+            "timestamp": "2025-01-01T12:00:00Z",
+        }
+        assert validate_telemetry_data(telemetry) is False
+
+
+class TestProcessRawTelemetry:
+    """Ensure raw telemetry is validated before alert creation."""
+
+    def test_low_risk_telemetry_returns_none(self):
+        telemetry = {
+            "equipment_id": "EQ-1",
+            "temperature": 70.0,
+            "vibration": 1.0,
+            "installation_age_hours": 1000,
+            "timestamp": "2025-01-01T12:00:00Z",
+        }
+        assert process_raw_telemetry(telemetry) is None
+
+    def test_high_risk_telemetry_generates_alert(self):
+        telemetry = {
+            "equipment_id": "EQ-1",
+            "temperature": 110.0,
+            "vibration": 7.0,
+            "installation_age_hours": 15000,
+            "timestamp": "2025-01-01T12:00:00Z",
+        }
+        alert = process_raw_telemetry(telemetry)
+
+        assert alert is not None
+        assert alert["equipment_id"] == telemetry["equipment_id"]
+        assert alert["telemetry"] == telemetry
+        assert alert["risk_probability"] is not None
+        assert alert["task_id"] is not None
+        assert alert["triggered_by_model"] is True
+        assert alert["failure_code"].startswith("ERR_")
+
+    def test_invalid_telemetry_returns_none(self):
+        telemetry = {
+            "equipment_id": "EQ-1",
+            "temperature": 110.0,
+            "vibration": "bad",
+            "installation_age_hours": 15000,
+            "timestamp": "2025-01-01T12:00:00Z",
+        }
+        assert process_raw_telemetry(telemetry) is None
 
 
 # =========================================================================

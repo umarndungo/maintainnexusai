@@ -4,30 +4,35 @@ MaintainNexus demonstrates a practical, automated ETL foundation for ingesting a
 
 The implemented flow is:
 
-1. Ingest raw maintenance alerts
-2. Validate the minimum required field structure and severity rules
-3. Enrich the alert with inventory and technician context
-4. Transform the result into a dispatchable work order
-5. Load the work order into the operational system
-6. Persist audit records so the data path remains traceable and documented
+1. Ingest raw telemetry from equipment
+2. Validate the raw telemetry payload for required fields, timestamp sanity, and numeric readings
+3. Score valid telemetry and generate an alert payload when risk exceeds the configured threshold
+4. Enrich the generated alert with inventory and technician context
+5. Transform the result into a dispatchable work order
+6. Load the work order into the operational system
+7. Persist audit records so the data path remains traceable and documented
 
 ## 1. Ingesting noisy operational inputs
 
-Operational alert data enters the system through the FastAPI maintenance ingestion endpoint:
+Raw telemetry enters the system through a dedicated FastAPI endpoint:
 
-- `POST /api/v1/alerts/maintenance`
+- `POST /api/v1/alerts/telemetry`
 - Implemented in `api/maintenance.py`
 
-The API accepts alert payloads containing fields such as:
+This endpoint accepts telemetry payloads containing:
 
 - `equipment_id`
-- `part_number`
-- `severity`
-- `failure_code`
-- `risk_probability`
-- `telemetry`
+- `temperature`
+- `vibration`
+- `installation_age_hours`
+- `timestamp`
 
-On ingestion, each alert is assigned a unique `task_id` and written to the audit log. This preserved record ensures that even messy or incomplete upstream inputs remain traceable and auditable within the platform.
+Validated telemetry is scored immediately; only high-risk events are
+converted into alert payloads and enqueued for downstream processing.
+
+The existing alert ingestion endpoint remains available for direct alert
+payloads, but the preferred first input is raw telemetry when external
+systems can provide it.
 
 ## 2. Cleaning through basic validation rules
 
