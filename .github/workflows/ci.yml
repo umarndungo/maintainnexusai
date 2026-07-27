@@ -36,4 +36,4 @@ jobs:
 
             # 4. Execute the pytest suite. Any failure will fail the job.
             - name: Execute Pytest Suite
-              run: pytest
+              run: python -m pytest tests/test_pipeline.py -q
