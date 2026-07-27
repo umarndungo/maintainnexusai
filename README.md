@@ -16,6 +16,24 @@ maintain-nexus/
 └── .github/         # CI/CD automation via GitHub Actions
 ```
 
+## Prerequisites
+
+- Docker and Docker Compose installed
+  - Install from: https://docs.docker.com/get-docker/
+- Flutter SDK installed and configured
+  - Install from: https://docs.flutter.dev/get-started/install
+  - Verify with:
+    ```bash
+    flutter doctor
+    ```
+- A supported Flutter desktop target if you want to run on Linux, macOS, or Windows
+  - Enable desktop support:
+    ```bash
+    flutter config --enable-linux-desktop
+    flutter config --enable-macos-desktop
+    flutter config --enable-windows-desktop
+    ```
+
 ## Quickstart Instructions
 
 1. **Clone the repository:**
@@ -40,6 +58,64 @@ maintain-nexus/
    flutter pub get
    flutter run
    ```
+## Run the app
+
+### Option A: Run locally with Docker Compose
+
+1. Start the backend and required services:
+   ```bash
+   docker compose up --build
+   ```
+2. Confirm the API is available at:
+   - `http://localhost:8000/docs`
+3. In a second terminal, run the Flutter UI from the project root:
+   ```bash
+   cd maintain_nexus_ui
+   flutter pub get
+   flutter run
+   ```
+4. Open the Flutter app on the device/emulator shown by `flutter run`.
+
+### Option B: Run the Flutter app directly
+
+1. From the Flutter app directory:
+   ```bash
+   cd maintain_nexus_ui
+   flutter pub get
+   flutter run
+   ```
+2. The app assumes the backend API is available at `http://localhost:8000/api/v1` by default.
+
+### Run the Flutter app on web
+
+1. Build for web:
+   ```bash
+   cd maintain_nexus_ui
+   flutter build web --release
+   ```
+2. Serve locally for testing:
+   ```bash
+   cd maintain_nexus_ui/build/web
+   python3 -m http.server 8080
+   ```
+3. Open `http://localhost:8080` in your browser.
+
+### Run the Flutter app on desktop
+
+1. Ensure desktop support is enabled:
+   ```bash
+   flutter config --enable-linux-desktop
+   flutter config --enable-macos-desktop
+   flutter config --enable-windows-desktop
+   flutter doctor
+   ```
+2. Run on the desktop target:
+   ```bash
+   cd maintain_nexus_ui
+   flutter run -d linux
+   ```
+
+> Replace `linux` with `macos` or `windows` as needed.
 
 ## Feature Summary
 
