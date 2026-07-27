@@ -73,8 +73,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         inventory = summary.inventory;
         recentHealthChecks = summary.recentHealthChecks;
         statusMessage = summary.backendStatus == 'ok'
-            ? 'Loaded $workOrderCount orders, $alertCount alerts.'
-            : 'Backend status: ${summary.backendStatus}. Loaded $workOrderCount orders, $alertCount alerts.';
+            ? 'Loaded $workOrderCount work orders, $alertCount alerts.'
+            : 'Backend status: ${summary.backendStatus}. Loaded $workOrderCount work orders, $alertCount alerts.';
       });
     } catch (e) {
       setState(() {
@@ -215,20 +215,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     color: const Color(0xFF111111),
                     onPressed: isLoading ? null : _triggerSampleAlert,
                   ),
-                  const SizedBox(width: 12),
-                  _buildSmallSimulationButton(
-                    icon: Icons.health_and_safety,
-                    label: 'Health Check',
-                    color: const Color(0xFF111111),
-                    onPressed: isLoading ? null : _triggerSampleHealthCheck,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildSmallSimulationButton(
-                    icon: Icons.add_box,
-                    label: 'Create Order',
-                    color: const Color(0xFF111111),
-                    onPressed: isLoading ? null : _navigateToCreateOrderScreen,
-                  ),
                 ],
               ),
             ),
@@ -330,14 +316,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildKpiCards() {
     final inStockCount = inventory.where((item) => item.inStock).length;
     final totalParts = inventory.length;
+    // compute fleet risk KPIs
+    final risks = recentHealthChecks.map((c) => c.riskProbability ?? 0.0).toList();
+    final avgRisk = risks.isEmpty ? 0.0 : (risks.reduce((a, b) => a + b) / risks.length);
+    final pctCritical = risks.isEmpty ? 0.0 : (risks.where((r) => r > 0.85).length / risks.length) * 100.0;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           child: _buildKpiCard(
-            title: 'Issues Seen',
-            value: '$alertCount',
-            subtitle: 'Total alerts received',
+            title: 'Equipment Risk',
+            value: '${(avgRisk * 100).toStringAsFixed(0)}% • ${pctCritical.toStringAsFixed(0)}% >85',
+            subtitle: 'Avg risk • % assets > 0.85',
             color: const Color(0xFFC8102E),
           ),
         ),
@@ -559,6 +550,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 6),
+                Text(
+                  '${recentHealthChecks.length} equipment health assessments completed',
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+                const SizedBox(height: 10),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFC8102E),
@@ -696,6 +693,161 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _build7DayRiskTrend() {
+    if (recentHealthChecks.isEmpty) return const SizedBox.shrink();
+
+    final byDay = <DateTime, List<double>>{};
+    for (final c in recentHealthChecks) {
+      final day = DateTime(c.checkedAt.year, c.checkedAt.month, c.checkedAt.day);
+      byDay.putIfAbsent(day, () => []).add(c.riskProbability ?? 0.0);
+    }
+
+    final today = DateTime.now();
+    final recentDays = List<DateTime>.generate(7, (index) {
+      final date = today.subtract(Duration(days: 6 - index));
+      return DateTime(date.year, date.month, date.day);
+    });
+
+    final points = <FlSpot>[];
+    for (var i = 0; i < recentDays.length; i++) {
+      final date = recentDays[i];
+      final values = byDay[date];
+      final avgRisk = values != null && values.isNotEmpty
+          ? values.reduce((a, b) => a + b) / values.length
+          : 0.0;
+      points.add(FlSpot(i.toDouble(), avgRisk * 100.0));
+    }
+
+    final labels = recentDays.map((date) => '${date.month}/${date.day}').toList();
+
+    return _buildSummaryCard(
+      '7-day Risk Trend',
+      Icons.show_chart,
+      const Color(0xFF111111),
+      [
+        SizedBox(
+          height: 140,
+          child: LineChart(
+            LineChartData(
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                horizontalInterval: 25,
+                getDrawingHorizontalLine: (value) => FlLine(
+                  color: const Color(0xFFE5E7EB),
+                  strokeWidth: 1,
+                ),
+              ),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  axisNameWidget: const Padding(
+                    padding: EdgeInsets.only(bottom: 4.0),
+                    child: Text(
+                      'Risk (%)',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
+                    ),
+                  ),
+                  axisNameSize: 20,
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    interval: 25,
+                    reservedSize: 36,
+                    getTitlesWidget: (value, meta) => Text(
+                      value.toInt().toString(),
+                      style: const TextStyle(fontSize: 10, color: Colors.black54),
+                    ),
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  axisNameWidget: const Padding(
+                    padding: EdgeInsets.only(top: 4.0),
+                    child: Text(
+                      'Date',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
+                    ),
+                  ),
+                  axisNameSize: 18,
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    interval: 1,
+                    reservedSize: 34,
+                    getTitlesWidget: (value, meta) {
+                      final index = value.toInt();
+                      if (index < 0 || index >= labels.length) return const SizedBox.shrink();
+                      return Text(
+                        labels[index],
+                        style: const TextStyle(fontSize: 10, color: Colors.black54),
+                      );
+                    },
+                  ),
+                ),
+                rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+              borderData: FlBorderData(
+                show: true,
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: points,
+                  isCurved: true,
+                  dotData: FlDotData(show: true),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    color: const Color(0xFFC8102E).withOpacity(0.15),
+                  ),
+                  color: const Color(0xFFC8102E),
+                  barWidth: 3,
+                ),
+              ],
+              minY: 0,
+              maxY: 100,
+              minX: 0,
+              maxX: 6,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTop5HighRisk() {
+    if (recentHealthChecks.isEmpty) {
+      return _buildSummaryCard('Top 5 High-Risk Assets', Icons.warning, const Color(0xFFC8102E), [const Text('No data')]);
+    }
+
+    final sorted = List<HealthCheck>.from(recentHealthChecks);
+    sorted.sort((a, b) => (b.riskProbability ?? 0.0).compareTo(a.riskProbability ?? 0.0));
+    final top5 = sorted.take(5).toList();
+
+    return _buildSummaryCard(
+      'Top 5 High-Risk Assets',
+      Icons.warning_amber,
+      const Color(0xFFC8102E),
+      [
+        Text(
+          '${recentHealthChecks.length} equipment health assessments',
+          style: const TextStyle(fontSize: 13, color: Colors.black54),
+        ),
+        const SizedBox(height: 10),
+        ...top5.map((c) => Padding(
+              padding: const EdgeInsets.only(bottom: 10.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${c.equipmentId} • ${( (c.riskProbability ?? 0.0) * 100).toStringAsFixed(0)}%', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text('Temp ${c.temperature.toStringAsFixed(1)}°F • Vib ${c.vibration.toStringAsFixed(2)} • ${c.healthStatus ?? 'UNK'}', style: const TextStyle(fontSize: 13)),
+                  const SizedBox(height: 4),
+                  Text('Checked: ${c.checkedAt.toLocal()}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
+            ))
       ],
     );
   }
@@ -942,29 +1094,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _buildExecutiveSummaryCard(),
                 const SizedBox(height: 20),
                 _buildKpiCards(),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _build7DayRiskTrend(),
+                          const SizedBox(height: 16),
+                          _buildSummaryCard(
+                            'Performance Metrics',
+                            Icons.speed,
+                            const Color(0xFFC8102E),
+                            [
+                              Text('Incidents: $workOrderCount dispatched, $alertCount alerts'),
+                              const SizedBox(height: 8),
+                              Text('Open repair tasks: $openWorkOrders'),
+                              Text('Active equipment issues: $incidentCount'),
+                              Text('Mean repair time: ${meanRepairTimeMinutes.toStringAsFixed(1)} min'),
+                              Text('Uptime estimate: ${uptimePercentage.toStringAsFixed(1)}%'),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(child: _buildTop5HighRisk()),
+                  ],
+                ),
                 const SizedBox(height: 20),
                 // _buildProcessFlow(), // preserved for later use
                 // const SizedBox(height: 24),
-                _buildQuickActions(),
+                // _buildQuickActions(),
                 const SizedBox(height: 24),
                 _buildHealthChecksCard(),
                 const SizedBox(height: 24),
                 _buildPreviewCardsRow(),
                 const SizedBox(height: 24),
-                _buildSummaryCard(
-                  'Performance Metrics',
-                  Icons.speed,
-                  const Color(0xFFC8102E),
-                  [
-                    Text('Incidents: $workOrderCount dispatched, $alertCount alerts'),
-                    const SizedBox(height: 8),
-                    Text('Open repair tasks: $openWorkOrders'),
-                    Text('Active equipment issues: $incidentCount'),
-                    Text('Estimated downtime: ${downtimeMinutes.toStringAsFixed(1)} min'),
-                    Text('Mean repair time: ${meanRepairTimeMinutes.toStringAsFixed(1)} min'),
-                    Text('Uptime estimate: ${uptimePercentage.toStringAsFixed(1)}%'),
-                  ],
-                ),
                 _buildNavigationCards(),
                 const SizedBox(height: 24),
               ],

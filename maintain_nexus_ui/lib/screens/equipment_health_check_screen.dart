@@ -130,7 +130,7 @@ class _EquipmentHealthCheckScreenState extends State<EquipmentHealthCheckScreen>
 
 
   Widget _buildHealthRiskBarChart() {
-    final checks = healthChecks.take(5).toList();
+    final checks = healthChecks.take(20).toList();
 
     if (checks.isEmpty) {
       return const SizedBox.shrink();
