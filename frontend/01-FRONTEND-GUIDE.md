@@ -1,7 +1,7 @@
 # Frontend Implementation Guide — Next.js Dashboard
 
 **Owners:** Frontend track owner(s)
-**Replaces:** Flutter Web target only. Flutter stays for mobile — see Integrations guide.
+**Replaces:** Flutter Web target only. Flutter stays for mobile — see `08-MOBILE-GUIDE.md`.
 **Reads:** `00-PROJECT-DOC.md` §4 (API contract) and §3 (roles) before starting.
 
 ---

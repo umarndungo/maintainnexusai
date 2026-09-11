@@ -155,12 +155,13 @@ Two data sources must stay separated:
 | Track | Owner(s) | Guide |
 |---|---|---|
 | Frontend (Next.js dashboard) | Frontend track owner(s) | `01-FRONTEND-GUIDE.md` |
-| Backend (FastAPI, lifecycle, RBAC) | (backend owner) | `02-BACKEND-GUIDE.md` |
-| Data/ML (risk model, ETL) | (ML owner) | `03-DATA-ML-GUIDE.md` |
-| Deployment (Docker, hosting, CI) | (devops owner) | `04-DEPLOYMENT-GUIDE.md` |
+| Backend (FastAPI, lifecycle, RBAC) | Backend track owner | `02-BACKEND-GUIDE.md` |
+| Data/ML (risk model, ETL) | ML track owner | `03-DATA-ML-GUIDE.md` |
+| Deployment (Docker, hosting, CI) | Deployment track owner | `04-DEPLOYMENT-GUIDE.md` |
 | Pitch deck | Pitch deck owner | `05-PITCH-DECK-GUIDE.md` |
-| Integrations (mobile offline, SMS, RBAC/auth) | Integrations track owner(s) | `06-INTEGRATIONS-GUIDE.md` |
+| Integrations (SMS, shared auth strategy) | Integrations track owner | `06-INTEGRATIONS-GUIDE.md` |
 | Auditing (tamper-evident logs) | Backend track owner | `07-AUDITING-GUIDE.md` |
+| Mobile (Flutter, offline-first) | Mobile track owner | `08-MOBILE-GUIDE.md` |
 
 ---
 

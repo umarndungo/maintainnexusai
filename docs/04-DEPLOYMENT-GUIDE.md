@@ -35,7 +35,7 @@ timing) and SMS provider credentials as secrets, not code.
   API) — this replaces the previously-documented Netlify/GitHub-Pages-for-Flutter-Web approach, since
   that was static-hosting-specific and Next.js needs a server runtime for the parts of this app that
   use server components/SSR.
-- Flutter mobile: standard app store / internal distribution build pipeline (see Integrations guide for
+- Flutter mobile: standard app store / internal distribution build pipeline (see `08-MOBILE-GUIDE.md` for
   the offline-sync implications on build config).
 - Backend + ML service + Postgres + Redis: keep on the same host/cluster as today unless load testing
   says otherwise — don't split them preemptively.
@@ -71,7 +71,7 @@ notification path just for this.
 - Include the audit-table permission revocation in the migration review checklist, not just the
   schema diff.
 - Set up CI pipeline stages per §5.
-- Confirm and document the mobile app release/distribution process with the Integrations owner.
+- Confirm and document the mobile app release/distribution process with the Mobile owner.
 
 ## 7. AI context block
 
