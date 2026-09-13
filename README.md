@@ -62,11 +62,15 @@ maintain-nexus/
    - `web_api`: FastAPI at `http://localhost:8000`
    - `postgres_db`: PostgreSQL on port `5432`
    - `redis`: Celery broker/backend on port `6379`
+   - `db_migrations`: one-shot admin migration and grant job
    - `celery_worker`: asynchronous alert, ML scoring, and work-order processing
    - `celery_beat`: five-minute demo telemetry and stale-approval escalation schedules
 
-   The API auto-creates missing tables and applies safe additive schema updates on startup. The
-   worker and beat services wait for healthy PostgreSQL and Redis before starting.
+   `db_migrations` connects as `POSTGRES_USER` and creates the schema, the `maintain_app` runtime
+   role, additive legacy columns, and database grants. The API, worker, and beat connect using
+   `APP_DB_USER` and cannot update or delete rows in `audit_logs` or
+   `work_order_lifecycle_events`. Runtime services wait for the migration job to complete before
+   starting.
 
 4. **Open API docs:**
    Visit `http://localhost:${API_PORT}/docs`, using the `API_PORT` value from `.env`.
@@ -110,7 +114,15 @@ maintain-nexus/
    docker compose down
    ```
 
-8. **Run the Flutter dashboard:**
+   To run the migration/grant job again after changing schema code:
+   ```bash
+   docker compose run --rm db_migrations
+   ```
+
+   This job is idempotent. It does not delete historical rows or drop the legacy
+   `work_orders.status` column.
+
+9. **Run the Flutter dashboard:**
    ```bash
    cd maintain_nexus_ui
    flutter pub get
@@ -184,7 +196,7 @@ maintain-nexus/
 - **Work order status** is derived exclusively from append-only lifecycle events
 - **Alert/work order correlation** via `alert_task_id`, preserving the originating alert ID on the dispatched work order
 - **Dashboard summary** via `/api/v1/dashboard/summary`
-- **Startup schema migration** automatically adds the `alert_task_id` column for existing PostgreSQL databases on first backend startup
+- **Schema migrations** run in the one-shot `db_migrations` service before any backend service starts — it creates the schema, additive columns like `alert_task_id` for existing databases, and the least-privilege `maintain_app` role
 - **Backend health status** now exposes `backend_status` in the dashboard summary response for clearer frontend state and diagnostics
 - **Unique scheduled alerts** are generated each Celery run to prevent repeated duplicate mock ingestion
 - **Duplicate-safe APIs** dedupe work orders and recent alerts before returning lists
@@ -278,7 +290,26 @@ pytest
 pytest -v
 ```
 
+`tests/test_db_migrations_grants.py` is a Postgres integration test proving that the `maintain_app`
+role is rejected by the database itself on `UPDATE`/`DELETE` against `audit_logs` and
+`work_order_lifecycle_events`. It skips automatically when no Postgres is reachable. To run it for
+real, point `TEST_ADMIN_DATABASE_URL` at an admin connection (e.g. the Compose `postgres_db` service
+published to the host) before running `pytest`.
+
 ## Release Notes
+
+### Database migration service and least-privilege application role
+
+- Added a one-shot `db_migrations` Compose service that runs schema creation, additive column
+  migrations, and database grants as the PostgreSQL admin role, before any other service starts.
+- Added a dedicated `maintain_app` runtime role: full CRUD on operational tables, but only
+  `SELECT`/`INSERT` on `audit_logs` and `work_order_lifecycle_events` — `UPDATE`/`DELETE` on those
+  two tables is revoked at the database grant level. `web_api`, `celery_worker`, and `celery_beat`
+  now connect as `maintain_app` instead of the PostgreSQL admin role.
+- Removed the old startup schema initialization (`database/init_db.py`) from the API lifespan and
+  the Celery worker-ready signal, now that `db_migrations` runs before those services start.
+- Added `tests/test_db_migrations_grants.py` to prove the grant revocation against a real Postgres
+  database rather than by inspection of the migration SQL alone.
 
 ### Backend schema and alert-work order correlation
 

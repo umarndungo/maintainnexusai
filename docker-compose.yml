@@ -23,12 +23,24 @@ services:
       timeout: 3s
       retries: 5
 
+  db_migrations:
+    build: .
+    command: python -m database.run_migrations
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-change-this-password}@${POSTGRES_HOST:-postgres_db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-maintain_db}
+      - APP_DB_USER=${APP_DB_USER:-maintain_app}
+      - APP_DB_PASSWORD=${APP_DB_PASSWORD:-change-this-app-password}
+      - PYTHONPATH=/app
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+
   web_api:
     build: .
     ports:
       - "${API_PORT:-8000}:${API_CONTAINER_PORT:-8000}"
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-change-this-password}@${POSTGRES_HOST:-postgres_db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-maintain_db}
+      - DATABASE_URL=postgresql://${APP_DB_USER:-maintain_app}:${APP_DB_PASSWORD:-change-this-app-password}@${POSTGRES_HOST:-postgres_db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-maintain_db}
       - REDIS_URL=redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/${REDIS_DB:-0}
       - CELERY_BROKER_URL=redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/${REDIS_DB:-0}
       - AUTH_SECRET=${AUTH_SECRET:-change-me-in-production}
@@ -37,6 +49,8 @@ services:
       - API_CONTAINER_PORT=${API_CONTAINER_PORT:-8000}
       - PYTHONPATH=/app
     depends_on:
+      db_migrations:
+        condition: service_completed_successfully
       postgres_db:
         condition: service_healthy
       redis:
@@ -46,7 +60,7 @@ services:
     build: .
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=2
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-change-this-password}@${POSTGRES_HOST:-postgres_db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-maintain_db}
+      - DATABASE_URL=postgresql://${APP_DB_USER:-maintain_app}:${APP_DB_PASSWORD:-change-this-app-password}@${POSTGRES_HOST:-postgres_db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-maintain_db}
       - REDIS_URL=redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/${REDIS_DB:-0}
       - CELERY_BROKER_URL=redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/${REDIS_DB:-0}
       - API_BASE_URL=${API_BASE_URL:-http://localhost:8000/api/v1}
@@ -54,6 +68,8 @@ services:
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-internal-dev-token}
       - PYTHONPATH=/app
     depends_on:
+      db_migrations:
+        condition: service_completed_successfully
       postgres_db:
         condition: service_healthy
       redis:
@@ -63,7 +79,7 @@ services:
     build: .
     command: celery -A tasks.celery_app beat --loglevel=info --scheduler celery.beat.Scheduler
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-change-this-password}@${POSTGRES_HOST:-postgres_db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-maintain_db}
+      - DATABASE_URL=postgresql://${APP_DB_USER:-maintain_app}:${APP_DB_PASSWORD:-change-this-app-password}@${POSTGRES_HOST:-postgres_db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-maintain_db}
       - REDIS_URL=redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/${REDIS_DB:-0}
       - CELERY_BROKER_URL=redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/${REDIS_DB:-0}
       - API_BASE_URL=${API_BASE_URL:-http://localhost:8000/api/v1}
@@ -71,6 +87,8 @@ services:
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-internal-dev-token}
       - PYTHONPATH=/app
     depends_on:
+      db_migrations:
+        condition: service_completed_successfully
       postgres_db:
         condition: service_healthy
       redis:

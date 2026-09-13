@@ -29,7 +29,6 @@ from celery.schedules import crontab
 from api.equipment import EQUIPMENT_IDS, PARTS
 from database.auditing import append_audit_log
 from database.db import SessionLocal
-from database.init_db import init_database
 from database.lifecycle import append_lifecycle_event, current_work_order_status
 from database.models import WorkOrderRecord
 from etl.extract import get_technician, resolve_cert_for_failure
@@ -78,13 +77,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Signal: ensure database schema is current when the worker starts
 # ---------------------------------------------------------------------------
-@signals.worker_ready.connect
-def create_tables_on_startup(**kwargs):
-    """Ensure DB tables exist and the current schema is applied when the Celery worker boots."""
-    init_database()
-    logger.info("Database tables verified / created.")
-
-
 # ---------------------------------------------------------------------------
 # Helper: write an AuditLog row
 # ---------------------------------------------------------------------------
