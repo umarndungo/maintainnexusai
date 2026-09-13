@@ -1,54 +1,104 @@
-> Equipment workflow update: see [EQUIPMENT-MONITORING-FLOW.md](EQUIPMENT-MONITORING-FLOW.md).
-> The telemetry scoring return-contract mismatch is now repaired. Complete canonical
-> streams use historical features; incomplete legacy streams remain unscored.
-> Monitoring/history and assignment/start/completion routes are implemented, with
-> station-scoped equipment/work-order access and committed SSE publication.
-> The previous 43/2 test result below is historical; the expanded backend suite
-> currently passes 48 checks. Legacy audit migration remains a local ingestion blocker.
-
 # Frontend integration status
 
-Reviewed against the team updates merged from `origin/develop` at `88efe6d` on 2026-09-13. This records implementation and handoff gaps; it does not replace the shared API or frozen product contracts.
+Current frontend behavior is checked against the locally reconciled backend
+from `origin/develop` at `6e4ef5c` (PR #11), the trained XGBoost model and the
+preserved historical-feature equipment workflow. The companion backend changes remain local and are not part of this frontend-only PR. Team actions are in [FRONTEND-TEAM-HANDOFF.md](FRONTEND-TEAM-HANDOFF.md).
+
+## Latest team branch caveat
+
+The team branch has advanced to `96b4a3f` through PR #13. It now provides audit verification and recorded summary downtime, but still lacks the local monitoring/repair contracts. The notes below describe the tested local companion backend, rather than promising compatibility with untouched `develop`. Reconcile the overview labels, verification helpers, ML input provenance and persisted prediction fields before marking the frontend PR ready.
 
 ## Connected surfaces
 
-All paths below begin with `/api/v1`. Tokens remain in a server-set httpOnly cookie. Protected page loads validate `/auth/me`; mutations validate the role before forwarding and still rely on FastAPI for business authorization and transitions.
+Paths below begin with `/api/v1`. Tokens remain in an httpOnly cookie. Next.js
+validates `/auth/me` and forwards user authorization; FastAPI owns business
+rules, station access, model decisions and lifecycle transitions. The internal
+ML endpoint is never exposed to browser calls or given a browser service token.
 
-| Surface | Connection | State |
+| Surface | Backend connection | Frontend representation |
 |---|---|---|
-| Login/session | POST `/auth/login`, GET `/auth/me` | Uses current `user_id` login, confirmed role/stations, one-hour cookie; no refresh endpoint invented |
-| Engineer/supervisor overview | GET `/dashboard/summary` | Metrics, equipment health, available technicians, inventory |
-| Work-order queue | GET `/maintenance/work-orders` | Status filters, approval/rejection, links and lifecycle drawer |
-| Supervisor queue | Same list plus PATCH `/{id}/escalate` | Escalated queue, approve/reject escalated orders, manual escalation of pending orders |
-| Recent alerts | GET `/alerts/recent` | Alert feed linked to equipment |
-| Lifecycle | GET `/maintenance/work-orders/{id}/lifecycle` | Drawer and persisted history page; renders risk explanations only when supplied |
-| Equipment | GET `/dashboard/equipment/{id}/downtime` plus work-order list | Downtime windows and maintenance history links |
-| Executive | GET `/dashboard/executive-summary` | Current tracked downtime and trend bucket; preserves planned avoided downtime, savings, dated trend/chart and station comparison fields |
-| Audit | GET `/dashboard/audit-logs`, GET `/dashboard/audit-logs/verify` | Read-only records with event/date filters; missing verification is explicitly unavailable, separate from failure |
-| Live updates | GET `/events` through Next.js `/api/events` | SSE confirmed by backend guide; cookie authentication, native reconnect, push-triggered refresh, no polling |
-| Presentation controls | POST `/alerts/telemetry`, POST `/maintenance/work-orders` | Preserved; use real backend responses, not frontend business logic |
-| Optional HSE extension | GET `/hse/overview`, POST `/hse/overfill-risk` | Preserved simulated tank snapshot/advisory API; uses merged auth boundary; no physical equipment commands |
+| Session | POST `/auth/login`, GET `/auth/me` | Current demo user-ID identity, actual role/stations, one-hour cookie |
+| Operations summary | GET `/dashboard/summary` | Explicitly labels simulated uptime/downtime and backend-wide summary scope; recorded alerts and last-24h incomplete work-order count |
+| Equipment workspace | GET `/monitoring/equipment` | Actual backend evaluation states and thresholds; matching-filter empty states; warning state marked unconfigured when the backend warning threshold is null |
+| Equipment details | GET `/monitoring/equipment/{id}/history` | Six sensor metrics, recorded sample history, available asset metadata, sensor and ingestion times, probability and saved-threshold decision |
+| Prediction evidence | Persisted predictions in monitoring and `/alerts/recent` | Risk level, horizon, target when supplied, model version, prediction ID/time and global model importance when supplied; missing metadata is explicit |
+| Maintenance alerts | GET `/alerts/recent` | Triggering snapshot, model context, source station, queue/pipeline status, certification and correlated work order; unavailable order data is not described as an absent task |
+| Assignment | GET `/hr/technicians/available`, POST `/maintenance/work-orders`, PATCH `/{id}/assign` | On-shift certified options and active task counts; missing roster/certification prevents unverifiable assignment choices; backend errors are retained |
+| Repair lifecycle | PATCH work-order `approve`, `reject`, `escalate`, `start`, `complete` | Controls match current state and engineer/supervisor permissions; completed maintenance does not overwrite risk or claim recovery |
+| Lifecycle evidence | GET `/maintenance/work-orders/{id}/lifecycle` | Actors, notes, transitions and recorded hash references; hashes are not presented as verified integrity |
+| Equipment downtime | GET `/dashboard/equipment/{id}/downtime` | Recorded dispatch-to-completion windows and open intervals, separate from simulated overview metrics |
+| Executive | GET `/dashboard/executive-summary` | Recorded downtime and open/completed/total windows first; scalar indicator labeled as a backend heuristic; savings, dated uptime and comparison only when supplied |
+| Executive equipment access | Same monitoring/history reads | Read-only equipment, alerts and maintenance progress; no assignment or repair controls |
+| Audit | GET `/dashboard/audit-logs`, optional `/dashboard/audit-logs/verify` | Latest 50 returned records, filters over that subset, explicit missing/malformed verification; no integrity claim based on loading records |
+| Live updates | GET `/events` through `/api/events` | Cookie-authorized SSE, reconnect, committed-event refresh and failure notifications |
+| Sample ingestion | POST `/alerts/telemetry` | Legacy sample explicitly described as insufficient for ML; optional station entry, duplicate/queue/evaluation feedback from the actual backend |
+| Optional HSE | GET `/hse/overview`, POST `/hse/overfill-risk` | Existing simulated assessment and advisory; no physical equipment commands |
 
-## Backend/ML handoff requirements
+Both API origins and versioned `/api/v1` roots are accepted in the web
+`API_BASE_URL`; normalization prevents duplicate path prefixes for auth, reads,
+actions and SSE.
 
-- Station isolation is not yet established by the imported backend. Work orders/equipment lack station ownership fields, several GET routes return all records, and emitted lifecycle events do not yet carry station ownership. SSE subscriptions now restrict engineers/technicians to their permitted stations; unknown-station events are not sent to them. Backend owners must attach the actual station to lifecycle/alert events to enable station-user updates. Web role guards and displaying `/auth/me` stations do not fix this. Backend owners must enforce station ownership on reads, actions, and streams; the client does not invent a station mapping or filter unscoped records as a substitute.
-- `/dashboard/audit-logs/verify` remains a documented follow-up. Keep the frontend connection; do not infer integrity from successful data loading. Backend scheduled verification and DB grant enforcement require their own validation.
-- Executive summary currently supplies `downtime_minutes`, window counts, and a string `uptime_trend`. It does not yet supply `downtime_avoided_minutes`, `cost_saved`, dated uptime points, or station comparison. The frontend supports both the current response and its previously implemented planned shape without relabelling tracked downtime as avoided downtime.
-- Work-order and lifecycle responses do not supply the frontend's existing `risk_drivers`/`top_features` explanations. Agree and document exact fields with backend/ML owners; no explanations are fabricated.
-- The merged ML scorer requires 58 engineered features and returns a dictionary. Existing `etl/telemetry.py` and `tasks.py` callers still supply the legacy raw telemetry shape and compare the return value as a number. Backend/ML must adapt feature generation and consume the saved model threshold; do not restore the old heuristic or zero-fill unavailable features. XGBoost and its scikit-learn wrapper dependency are now declared in `requirements.txt`.
-- The frozen product contract describes a 24-hour horizon while the latest ML handoff describes a 6-hour model. Owners must reconcile the documents. No prediction horizon or decision policy is invented in the frontend.
-- Loading-point reassignment, autonomous decision/outcome handling, SMS provider delivery, and offline mobile remain separate team-owned integrations. The web never calls internal ML/SMS routes or commands equipment.
-- The backend only offers demo user-ID authentication. Password credentials, refresh tokens, and production identity management remain backend/integrations work.
-- HSE is explicitly preserved at the user's request as an optional simulated presentation extension. It is not a claim that the frozen automation MVP has expanded to live spill detection or equipment control.
+## ML semantics
 
-## Deployment and verification
+The backend builds its 58 model inputs from six canonical sensor metrics,
+asset metadata and 60 earlier complete one-minute readings. The frontend
+consumes the persisted evaluation and does not reconstruct features, infer
+health from raw temperature/vibration, or replace the saved decision with a
+frontend cutoff. The saved threshold is currently 0.12 and the horizon is six
+hours; displayed values come from the evaluation or backend configuration.
 
-`web/Dockerfile` builds the documented standalone server; Compose now includes the web service and its health check. `web/.env.example` documents the server-side API origin. Frontend CI runs lint, build, typecheck and the test-only mocked integration smoke suite on PRs. Production secret/CORS policies, backend CI, ML service health checks and mobile release validation remain deployment-owner work.
+Default local scoring does not currently attach the service's prediction ID,
+timestamp, model-version or importance metadata. The frontend does not invent
+those fields. HTTP-mode evaluations retain and display them when returned by
+the reconciled ML endpoint. `top_features` is global feature importance,
+explicitly separated from explanations of an individual prediction. Lifecycle
+hashes belong to the recorded event chain, not to an ML explanation.
 
+Historical probability charts contain only evaluated readings. An unscored
+latest reading is called out; missing evaluations are not estimated. A single
+threshold line is shown only when all returned evaluated readings share that
+threshold. Sensor values use canonical units only when canonical fields were
+provided; legacy values retain reported-unit labeling.
 
-## Validation for this change
+## Remaining backend limitations
 
-- Frontend lint, production build and TypeScript checks pass.
-- Production-server smoke checks pass against the test-only API: login/identity, httpOnly cookie, forbidden roles, expired/unavailable sessions, status filtering, cookie-only mutations, supervisor escalation, lifecycle proxy, verification unavailable, SSE and both executive response shapes.
-- Eight focused backend/auth/lifecycle/SSE tests pass. Full backend suite: 43 pass, 2 fail in the inherited raw-telemetry/model-feature mismatch described above (`TestProcessRawTelemetry`). This is not a passing end-to-end ML ingestion pipeline.
-- API import succeeds after installing XGBoost/scikit-learn. Compose configuration validates; a full Docker image/stack run and live database/station-isolation validation have not been performed.
+- `/dashboard/summary` and `/dashboard/audit-logs` still aggregate/list records
+  without station filtering. Equipment and work-order reads/actions enforce
+  scope, but their protection does not establish station isolation for the
+  global summary or audit list. This requires backend work.
+- Summary uptime and downtime use simulated formulas. Executive/equipment
+  downtime endpoints use persisted windows; neither proves avoided downtime
+  or savings. Executive `uptime_trend` is currently a heuristic string.
+- `/dashboard/audit-logs/verify` is not mounted by the active backend. Missing
+  or malformed verification remains unavailable, distinct from failed checks.
+- Schema migration adds columns and app-role grants but preserves existing
+  unchained audit rows. The local legacy-tail ingestion blocker remains until a
+  separately reviewed history migration is implemented.
+- PostgreSQL role-grant enforcement requires a live PostgreSQL validation run;
+  SQLite does not establish that enforcement.
+- Demo identity is not production authentication. The demo technician identity
+  is not linked to the HR assignment IDs, so adding a technician web execution
+  flow would require that backend identity mapping first.
+- HR/inventory and HSE remain simulated sources. SMS delivery, loading-point
+  reassignment, multi-worker SSE and mobile/offline integrations remain outside
+  this frontend reconciliation.
+
+## Verification
+
+- `npm run lint`, `npm run typecheck`, `npm run build`.
+- `npm run test:smoke` checks production rendering against fixture contracts,
+  cookie auth/actions, role guards, backend errors, filters, ML metadata, absent
+  or malformed audit verification, SSE and current/optional executive shapes.
+- `npm run test:backend` starts the actual FastAPI application and trained model
+  with an isolated in-memory database and a production Next.js server. It checks
+  real HTTP ML scoring, rendered probability/version/ID, alert-based certified
+  assignment, approval/start/completion, downtime, executive read-only equipment
+  access, and accurate summary/audit states. Only broker dispatch is replaced;
+  model inference, API authorization, persistence and lifecycle handlers are
+  real. No live application database is used. This test requires Python and the
+  root backend dependencies; `PYTHON` can select the interpreter.
+- Current backend suite: 67 passed, one PostgreSQL-grants test skipped without
+  `TEST_ADMIN_DATABASE_URL`. The older 43-pass/2-failure telemetry mismatch and
+  48-check equipment-review results are historical, not current validation.
+
+No full Docker stack or live production data migration has been performed.
