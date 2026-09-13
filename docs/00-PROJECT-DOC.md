@@ -107,6 +107,17 @@ RBAC is enforced **server-side** on every endpoint — the frontend hiding a but
 | GET | `/api/v1/events` | Authenticated server-sent events stream for live dashboard updates | Next.js dashboard |
 | POST | `/api/v1/notifications/sms` | Internal — triggers SMS to technician/engineer | Backend-internal only (integrations) |
 
+### Preserved optional HSE presentation extension
+
+The existing HSE presentation feature is retained at the frontend owner's request. These advisory endpoints are outside the frozen loading-point automation MVP and do not control pumps/valves or establish live KPC sensor connectivity.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/hse/overview` | Simulated tank telemetry snapshot and computed fill/flow warning |
+| POST | `/api/v1/hse/overfill-risk` | Engineer/supervisor advisory assessment; does not persist telemetry or command equipment |
+
+The response includes tank level, flow, severity, recommended action, drivers, source, and check time. `source` explicitly identifies simulated telemetry. See `api/hse.py` for implemented fields and `FRONTEND-INTEGRATION-STATUS.md` for handoff status.
+
 **Rule for every team:** if you need a field the contract above doesn't have, add it to this table first
 and flag it in standup — don't invent a shadow endpoint or a client-side workaround.
 
