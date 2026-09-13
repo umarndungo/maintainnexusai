@@ -9,9 +9,14 @@ for a real warehouse management system database.
 import random
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from api.auth import require_roles
 
-router = APIRouter(prefix="/api/v1/warehouse", tags=["Inventory"])
+router = APIRouter(
+    prefix="/api/v1/warehouse",
+    tags=["Inventory"],
+    dependencies=[Depends(require_roles("technician", "engineer", "executive", "supervisor"))],
+)
 
 _PARTS = [
     "Pump Seal Kit #A4",

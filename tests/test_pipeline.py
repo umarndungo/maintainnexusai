@@ -174,7 +174,7 @@ class TestBuildWorkOrderPayload:
         assert result["equipment_id"] == "EQ-1"
         assert result["technician_id"] == "TECH-001"
         assert result["part_number"] == "P-100"
-        assert result["status"] == "CREATED"
+        assert "status" not in result
 
     def test_does_not_mutate_inputs(self):
         """Test test does not mutate inputs."""
@@ -327,7 +327,6 @@ class TestDispatchWorkOrder:
             "equipment_id": "EQ-1",
             "technician_id": "TECH-001",
             "part_number": "P-100",
-            "status": "CREATED",
         }
         result = dispatch_work_order(payload)
         assert result is not None

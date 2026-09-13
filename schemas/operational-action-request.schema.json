@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Operational Action Request",
+  "type": "object",
+  "required": [
+    "action_id",
+    "decision_id",
+    "action_type",
+    "idempotency_key",
+    "requested_at"
+  ],
+  "properties": {
+    "action_id": {
+      "type": "string"
+    },
+    "decision_id": {
+      "type": "string"
+    },
+    "action_type": {
+      "enum": [
+        "RESCHEDULE_TRUCK",
+        "REASSIGN_LOADING_POINT",
+        "CREATE_MAINTENANCE_WORK_ORDER"
+      ]
+    },
+    "truck_id": {
+      "type": "string"
+    },
+    "original_loading_point_id": {
+      "type": "string"
+    },
+    "new_loading_point_id": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
