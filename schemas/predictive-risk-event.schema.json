@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Predictive Failure Risk Event",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "prediction_id",
+    "equipment_id",
+    "equipment_type",
+    "risk_score",
+    "risk_level",
+    "prediction_horizon_hours",
+    "model_version",
+    "timestamp"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "event_type": {
+      "const": "PREDICTIVE_FAILURE_RISK_DETECTED"
+    },
+    "prediction_id": {
+      "type": "string"
+    },
+    "equipment_id": {
+      "type": "string"
+    },
+    "equipment_type": {
+      "enum": [
+        "PUMP",
+        "LOADING_ARM",
+        "VALVE"
+      ]
+    },
+    "station_id": {
+      "type": "string"
+    },
+    "risk_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "risk_level": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    "prediction_horizon_hours": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "model_version": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
