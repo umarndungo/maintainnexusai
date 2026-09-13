@@ -18,11 +18,11 @@ Two integration surfaces that connect Frontend, Backend, and Mobile without belo
 
 ## 2. SMS notifications
 
-- Backend calls `POST /api/v1/notifications/sms` internally (see Backend guide) on: work-order dispatch
-  (to the assigned technician) and escalation (to the supervisor).
+- Backend exposes `POST /api/v1/notifications/sms` as an internal queue boundary. Provider-backed sending
+  and dispatch/escalation call sites are still follow-up work; no end-user role may call this route.
 - Pick a provider (e.g. Twilio) and wrap it behind that one internal endpoint — don't call the provider
   SDK from multiple places in the codebase.
-- Log every send attempt to `sms_log` (project doc §5) with delivery status — this matters for the
+- When provider delivery is added, log every send attempt to `sms_log` (project doc §5) with delivery status — this matters for the
   audit trail and for debugging "technician says they never got the alert." `sms_log` doesn't need
   the full hash-chain treatment (`07-AUDITING-GUIDE.md`) since it's operational logging rather than
   a safety/compliance record, but it should still be insert-only — no code path should update a
@@ -37,9 +37,8 @@ Two integration surfaces that connect Frontend, Backend, and Mobile without belo
 - Both call `GET /api/v1/auth/me` on session start to get role + station scoping, and use that only to
   drive UI — the actual enforcement is server-side (Backend guide §2 step 2), so a client bug here is a
   UX problem, not a security hole, but it should still be correct.
-- Token refresh strategy: agree on one approach (short-lived JWT + refresh token, or long-lived JWT with
-  reasonable expiry) between mobile and web rather than each picking independently, since both hit the
-  same `/auth` endpoints.
+- Current backend tokens are signed HS256 bearer tokens with a one-hour expiry. Refresh tokens are not
+  implemented; agree on a refresh strategy before production deployment.
 
 ## 4. Tasks
 
