@@ -5,9 +5,9 @@ import { useState } from "react";
 
 type Action = "telemetry" | "overfill" | "work-order";
 const actions: Record<Action, { label: string; detail: string }> = {
-  telemetry: { label: "Send high-risk signal", detail: "Submits synthetic sample telemetry to the API" },
+  telemetry: { label: "Send sample sensor reading", detail: "Submits synthetic sample telemetry to the API" },
   overfill: { label: "Trigger overfill warning", detail: "Assesses a simulated tank fill; no equipment commands" },
-  "work-order": { label: "Create pending order", detail: "Adds an approval-ready work order" },
+  "work-order": { label: "Assign alert maintenance", detail: "Open alert assignment in the equipment workflow" },
 };
 
 export function DemoControlCenter() {
@@ -19,6 +19,10 @@ export function DemoControlCenter() {
   if (pathname !== "/dashboard") return null;
 
   async function run(action: Action) {
+    if (action === "work-order") {
+      router.push("/equipment");
+      return;
+    }
     setBusy(action);
     setMessage("");
     const bodies = {
@@ -29,9 +33,9 @@ export function DemoControlCenter() {
     const paths = { telemetry: "/api/proxy/alerts/telemetry", overfill: "/api/proxy/hse/overfill-risk", "work-order": "/api/proxy/maintenance/work-orders" };
     try {
       const response = await fetch(paths[action], { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(bodies[action]) });
-      if (!response.ok) throw new Error("The backend rejected this demo action.");
-      const result = await response.json();
-      setMessage(action === "overfill" ? `Simulated assessment: ${result.severity}. ${result.recommended_action}` : action === "work-order" ? `Created ${result.work_order_id}: ${result.status}` : result.alert_created === false ? "Telemetry accepted; no alert created." : "Telemetry accepted for backend processing.");
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : "The backend rejected this demo action.");
+      setMessage(action === "overfill" ? `Simulated assessment: ${result.severity}. ${result.recommended_action}` : result.alert_created === false ? result.evaluation_reason ?? "Telemetry accepted; server detected no threshold breach." : "Telemetry accepted for backend processing.");
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Action failed");

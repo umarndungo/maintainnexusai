@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { LogoutButton } from "@/components/logout-button";
 
 export default function SessionUnavailablePage() {
