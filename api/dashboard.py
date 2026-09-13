@@ -14,9 +14,10 @@ from api.auth import require_roles
 
 from api.equipment import INVENTORY_DB
 from api.technicians import TECHNICIANS
+from database.auditing import GENESIS_HASH, compute_audit_hash
 from database.db import SessionLocal
-from database.lifecycle import current_work_order_status
-from database.models import AuditLog, DowntimeWindow, WorkOrderRecord
+from database.lifecycle import compute_lifecycle_hash, current_work_order_status
+from database.models import AuditLog, DowntimeWindow, WorkOrderLifecycleEvent, WorkOrderRecord
 from api.auth import get_current_user
 
 router = APIRouter(
@@ -125,25 +126,29 @@ async def get_dashboard_summary():
                 }
             )
 
-        downtime_minutes = 0.0
-        for record in recent_work_orders:
-            created_at = _normalize_timestamp(record.created_at)
-            age_minutes = max(
-                0.0,
-                (datetime.now(timezone.utc) - created_at).total_seconds() / 60.0,
-            )
-            current_status = current_statuses.get(record.id)
-            if current_status in {"PENDING_APPROVAL", "APPROVED", "DISPATCHED"}:
-                simulated = 25.0
-            elif current_status in {"IN_PROGRESS", "PROCESSING"}:
-                simulated = max(20.0, min(age_minutes, 90.0))
-            else:
-                simulated = max(30.0, min(age_minutes, 180.0))
-            downtime_minutes += simulated
+        # Real downtime, from the same DowntimeWindow rows opened/closed by
+        # work-order lifecycle transitions (see database/lifecycle.py) —
+        # not a status/age heuristic. Matches the window /executive-summary
+        # already uses, scoped to the same recent_window as the rest of
+        # this endpoint's "recent" figures.
+        recent_downtime_windows = (
+            db.query(DowntimeWindow)
+            .filter(DowntimeWindow.started_at >= recent_window)
+            .all()
+        )
+        now = datetime.now(timezone.utc)
+        downtime_minutes = sum(
+            (
+                (_normalize_timestamp(window.ended_at) or now)
+                - _normalize_timestamp(window.started_at)
+            ).total_seconds()
+            / 60.0
+            for window in recent_downtime_windows
+        )
 
         mean_repair_time_minutes = (
-            round(downtime_minutes / len(recent_work_orders), 1)
-            if recent_work_orders
+            round(downtime_minutes / len(recent_downtime_windows), 1)
+            if recent_downtime_windows
             else 0.0
         )
         uptime_percentage = round(
@@ -208,6 +213,50 @@ async def get_audit_logs():
             }
             for record in records
         ]
+    finally:
+        db.close()
+
+
+def _verify_chain(rows, compute_hash) -> tuple[bool, int]:
+    """Walk one hash chain from genesis, recomputing each row's hash from
+    its actual stored data. Stops at the first mismatch (a tampered row, a
+    reordered/deleted row, or a break in the previous_event_hash link) and
+    reports how many rows verified clean before that point."""
+    previous_hash = GENESIS_HASH
+    checked = 0
+    for row in rows:
+        if not row.event_hash or row.previous_event_hash != previous_hash:
+            return False, checked
+        if compute_hash(row, previous_hash) != row.event_hash:
+            return False, checked
+        previous_hash = row.event_hash
+        checked += 1
+    return True, checked
+
+
+@router.get("/audit-logs/verify")
+async def verify_audit_chain():
+    """Recompute both append-only hash chains from genesis and report
+    whether every row's event_hash still matches its data. This is what
+    actually establishes integrity — a successful /audit-logs read only
+    means the rows loaded, not that they're untampered.
+    """
+    db = SessionLocal()
+    try:
+        audit_rows = db.query(AuditLog).order_by(AuditLog.id.asc()).all()
+        lifecycle_rows = (
+            db.query(WorkOrderLifecycleEvent)
+            .order_by(WorkOrderLifecycleEvent.id.asc())
+            .all()
+        )
+        audit_ok, audit_checked = _verify_chain(audit_rows, compute_audit_hash)
+        lifecycle_ok, lifecycle_checked = _verify_chain(lifecycle_rows, compute_lifecycle_hash)
+        return {
+            "chain_integrity": audit_ok and lifecycle_ok,
+            "checked_events": audit_checked + lifecycle_checked,
+            "chain": "audit_logs+work_order_lifecycle_events",
+            "verified_at": datetime.now(timezone.utc).isoformat(),
+        }
     finally:
         db.close()
 

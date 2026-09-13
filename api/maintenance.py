@@ -130,6 +130,12 @@ async def receive_alert(alert: AlertPayload):
 
 
 class TelemetryPayload(BaseModel):
+    """Raw telemetry accepted from sensors/UI. Only the legacy fields are
+    required so existing callers keep working; the richer sensor readings
+    below are optional and, when a caller doesn't have them, are filled in
+    with neutral defaults by ``etl.telemetry.enrich_for_scoring`` before ML
+    scoring (see that module for exactly what's inferred vs. defaulted)."""
+
     model_config = ConfigDict(extra="allow")
 
     equipment_id: str
@@ -137,6 +143,14 @@ class TelemetryPayload(BaseModel):
     vibration: float
     installation_age_hours: int
     timestamp: str
+    asset_id: str | None = None
+    asset_type: str | None = None
+    operating_state: str | None = None
+    alarm_code: str | None = None
+    pressure_bar: float | None = None
+    flow_rate_m3h: float | None = None
+    motor_current_a: float | None = None
+    valve_position_pct: float | None = None
 
 
 @router.post("/telemetry", status_code=status.HTTP_202_ACCEPTED)

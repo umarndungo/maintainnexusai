@@ -5,25 +5,31 @@ import json
 from datetime import datetime, timezone
 
 from database.models import WorkOrderLifecycleEvent
+from database.timeutils import to_utc
 
 GENESIS_HASH = "GENESIS"
 
 
-def _canonical_event_data(event: WorkOrderLifecycleEvent) -> str:
-    return json.dumps(
-        {
-            "work_order_id": event.work_order_id,
-            "from_status": event.from_status,
-            "to_status": event.to_status,
-            "actor_id": event.actor_id,
-            "actor_role": event.actor_role,
-            "timestamp": event.timestamp.isoformat(),
-            "note": event.note,
-            "supersedes_event_id": event.supersedes_event_id,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
+def _canonical_event_data(event: WorkOrderLifecycleEvent) -> dict:
+    """The exact fields hashed for one lifecycle row. Shared by the writer
+    here and by the /dashboard/audit-logs/verify endpoint, so a hash
+    computed from a freshly-queried row always agrees with the one
+    computed at insert time."""
+    return {
+        "work_order_id": event.work_order_id,
+        "from_status": event.from_status,
+        "to_status": event.to_status,
+        "actor_id": event.actor_id,
+        "actor_role": event.actor_role,
+        "timestamp": to_utc(event.timestamp).isoformat(),
+        "note": event.note,
+        "supersedes_event_id": event.supersedes_event_id,
+    }
+
+
+def compute_lifecycle_hash(event: WorkOrderLifecycleEvent, previous_hash: str) -> str:
+    serialized = json.dumps(_canonical_event_data(event), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256((serialized + previous_hash).encode("utf-8")).hexdigest()
 
 
 def append_lifecycle_event(
@@ -55,9 +61,7 @@ def append_lifecycle_event(
         supersedes_event_id=supersedes_event_id,
         event_hash="pending",
     )
-    event.event_hash = hashlib.sha256(
-        (_canonical_event_data(event) + event.previous_event_hash).encode("utf-8")
-    ).hexdigest()
+    event.event_hash = compute_lifecycle_hash(event, event.previous_event_hash)
     db.add(event)
     return event
 
