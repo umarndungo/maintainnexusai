@@ -23,6 +23,7 @@ from api.auth import router as auth_router
 from api.equipment import router as equipment_router
 from api.maintenance import router as maintenance_router
 from api.ml import router as ml_router
+from api.monitoring import router as monitoring_router
 from api.notifications import router as notifications_router
 from api.auth import get_current_user
 from api.technicians import router as technicians_router
@@ -112,6 +113,7 @@ app.include_router(hse_router)
 app.include_router(equipment_router)
 app.include_router(maintenance_router)
 app.include_router(ml_router)
+app.include_router(monitoring_router)
 app.include_router(notifications_router)
 app.include_router(technicians_router)
 app.include_router(workorders_router)
