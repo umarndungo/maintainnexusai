@@ -5,7 +5,7 @@ type Context = { params: Promise<{ id: string; action: string }> };
 
 export async function PATCH(request: NextRequest, context: Context) {
   const { id, action } = await context.params;
-  if (!["approve", "reject", "escalate"].includes(action)) return NextResponse.json({ detail: "Unsupported action" }, { status: 400 });
+  if (!["approve", "reject", "escalate", "assign", "start", "complete"].includes(action)) return NextResponse.json({ detail: "Unsupported action" }, { status: 400 });
   return proxy(request, `/api/v1/maintenance/work-orders/${encodeURIComponent(id)}/${action}`, action === "escalate" ? ["supervisor"] : ["engineer", "supervisor"]);
 }
 

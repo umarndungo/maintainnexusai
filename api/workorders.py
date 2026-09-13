@@ -105,6 +105,10 @@ async def create_work_order(wo: WorkOrderCreate):
             actor_role="internal",
             note="Work order created from validated alert",
         )
+        # So connected dashboards see the ETL pipeline dispatch a new work
+        # order live, not only later manual approve/reject/escalate actions
+        # (which already published via _transition).
+        _publish_lifecycle_event(record, "PENDING_APPROVAL")
         db.commit()
     finally:
         db.close()
@@ -129,6 +133,16 @@ async def create_work_order(wo: WorkOrderCreate):
         response["alert_task_id"] = wo.alert_task_id
 
     return response
+
+
+def _publish_lifecycle_event(record: WorkOrderRecord, to_status: str) -> None:
+    publish_event({
+        "type": "work_order.lifecycle",
+        "work_order_id": record.id,
+        "equipment_id": record.equipment_id,
+        "technician_id": record.technician_id,
+        "to_status": to_status,
+    })
 
 
 def _get_work_order(db, work_order_id: str) -> WorkOrderRecord:
@@ -177,13 +191,7 @@ def _transition(db, record, to_status: str, actor: dict, note: str):
         ).first()
         if window is not None:
             window.ended_at = event.timestamp
-    publish_event({
-        "type": "work_order.lifecycle",
-        "work_order_id": record.id,
-        "equipment_id": record.equipment_id,
-        "technician_id": record.technician_id,
-        "to_status": to_status,
-    })
+    _publish_lifecycle_event(record, to_status)
     db.flush()
     return event
 

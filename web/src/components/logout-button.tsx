@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { PageLoading } from "./page-loading";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -18,5 +19,5 @@ export function LogoutButton() {
     }
   }
 
-  return <button className="logout-button" disabled={busy} onClick={logout} type="button">{busy ? "Signing out..." : "Sign out"}</button>;
+  return <>{busy && <PageLoading />}<button className="logout-button" disabled={busy} onClick={logout} type="button">{busy ? "Signing out..." : "Sign out"}</button></>;
 }

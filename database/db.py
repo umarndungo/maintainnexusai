@@ -9,12 +9,12 @@ for use as a FastAPI dependency.
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-import os
+from config import DATABASE_URL
 
 # Connection string — overridable via environment variable so the same
 # code works in Docker Compose (where the host is the service name)
 # and in local development (where the host is localhost).
-DB_URL = os.getenv("DATABASE_URL", "postgresql://admin:secret@localhost:5432/maintain_db")
+DB_URL = DATABASE_URL
 
 # Engine is the core interface to the database. It holds the connection pool.
 engine = create_engine(DB_URL)

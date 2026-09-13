@@ -47,7 +47,7 @@ maintain-nexus/
     flutter config --enable-windows-desktop
     ```
 
-## Quickstart Instructions
+## Backend Quickstart
 
 1. **Clone the repository:**
    ```bash
@@ -55,17 +55,94 @@ maintain-nexus/
    cd maintain-nexus
    ```
 
-2. **Launch backend services with Docker Compose:**
+2. **Create the local environment file:**
    ```bash
-   docker compose up --build
+   cp .env.example .env
    ```
 
-   The backend will auto-create missing tables and apply a safe `alert_task_id` schema migration on first startup.
+   Edit `.env` to set the host ports, public API/domain address, database credentials, `AUTH_SECRET`,
+   and `INTERNAL_SERVICE_TOKEN`. `.env` is ignored by Git and must never be committed. Compose uses
+   `API_BASE_URL` for host/public clients and `API_INTERNAL_BASE_URL` with Docker service names
+   (`web_api`, `postgres_db`, and `redis`) for container-to-container traffic. Host clients use the
+   published `API_PORT`.
 
-3. **Open API docs:**
-   Visit [http://localhost:8000/docs](http://localhost:8000/docs).
+3. **Launch backend services with Docker Compose:**
+   ```bash
+   make up
+   ```
 
-4. **Run the Flutter dashboard:**
+   `make up` runs `scripts/setup_db.sh` (fills in any blank required secret —
+   `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`, `AUTH_SECRET`, `INTERNAL_SERVICE_TOKEN` — starts
+   `postgres_db`/`redis`, waits for Postgres to report healthy, and runs `db_migrations`), then
+   brings up the rest of the stack. Equivalent to running `./scripts/setup_db.sh` followed by
+   `docker compose up -d --build`; use the plain `docker compose up --build` form directly if you'd
+   rather manage `.env` and migrations yourself.
+
+   Compose starts:
+   - `web_api`: FastAPI at `http://localhost:8000`
+   - `postgres_db`: PostgreSQL on port `5432`
+   - `redis`: Celery broker/backend on port `6379`
+   - `db_migrations`: one-shot admin migration and grant job
+   - `celery_worker`: asynchronous alert, ML scoring, and work-order processing
+   - `celery_beat`: five-minute demo telemetry and stale-approval escalation schedules
+
+   `db_migrations` connects as `POSTGRES_USER` and creates the schema, the `maintain_app` runtime
+   role, additive legacy columns, and database grants. The API, worker, and beat connect using
+   `APP_DB_USER` and cannot update or delete rows in `audit_logs` or
+   `work_order_lifecycle_events`. Runtime services wait for the migration job to complete before
+   starting.
+
+4. **Open API docs:**
+   Visit `http://localhost:${API_PORT}/docs`, using the `API_PORT` value from `.env`.
+
+5. **Get a development bearer token:**
+   ```bash
+   TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"user_id":"engineer-demo"}' | python -c \
+     'import json,sys; print(json.load(sys.stdin)["access_token"])')
+   ```
+
+   The available development users are `tech-demo`, `engineer-demo`, `executive-demo`, and
+   `supervisor-demo`. Production authentication must replace these demo users and set a strong
+   `AUTH_SECRET`.
+
+6. **Check the authenticated API:**
+   ```bash
+   curl http://localhost:8000/api/v1/auth/me \
+     -H "Authorization: Bearer $TOKEN"
+   curl http://localhost:8000/api/v1/dashboard/summary \
+     -H "Authorization: Bearer $TOKEN"
+   ```
+
+7. **Submit telemetry:**
+   ```bash
+   curl -X POST http://localhost:8000/api/v1/alerts/telemetry \
+     -H "Authorization: Bearer $TOKEN" \
+     -H 'Content-Type: application/json' \
+     -d '{"equipment_id":"PUMP-101","temperature":90,"vibration":2,"installation_age_hours":1000,"timestamp":"2026-09-13T12:00:00Z"}'
+   ```
+
+   Telemetry returns `202` after validation and queueing. ML scoring occurs in `celery_worker`, not
+   inside the Uvicorn request handler. Watch the asynchronous path with:
+   ```bash
+   docker compose logs -f web_api celery_worker celery_beat
+   ```
+
+8. **Stop the backend:**
+   ```bash
+   make down
+   ```
+
+   To run the migration/grant job again after changing schema code:
+   ```bash
+   make migrate
+   ```
+
+   This job is idempotent. It does not delete historical rows or drop the legacy
+   `work_orders.status` column.
+
+9. **Run the Flutter dashboard:**
    ```bash
    cd maintain_nexus_ui
    flutter pub get
@@ -77,7 +154,7 @@ maintain-nexus/
 
 1. Start the backend and required services:
    ```bash
-   docker compose up --build
+   make up
    ```
 2. Confirm the API is available at:
    - `http://localhost:8000/docs`
@@ -139,7 +216,7 @@ maintain-nexus/
 - **Work order status** is derived exclusively from append-only lifecycle events
 - **Alert/work order correlation** via `alert_task_id`, preserving the originating alert ID on the dispatched work order
 - **Dashboard summary** via `/api/v1/dashboard/summary`
-- **Startup schema migration** automatically adds the `alert_task_id` column for existing PostgreSQL databases on first backend startup
+- **Schema migrations** run in the one-shot `db_migrations` service before any backend service starts — it creates the schema, additive columns like `alert_task_id` for existing databases, and the least-privilege `maintain_app` role
 - **Backend health status** now exposes `backend_status` in the dashboard summary response for clearer frontend state and diagnostics
 - **Unique scheduled alerts** are generated each Celery run to prevent repeated duplicate mock ingestion
 - **Duplicate-safe APIs** dedupe work orders and recent alerts before returning lists
@@ -149,7 +226,8 @@ maintain-nexus/
 - **Internal services** use `X-Internal-Service`; `/api/v1/notifications/sms` is never available to end-user roles
 - **Downtime** is persisted as equipment windows opened at dispatch and closed at completion
 - **Live events** are available through the authenticated `/api/v1/events` SSE feed
-- **ML service integration** is intentionally deferred; the live ETL path must not be documented as calling `/api/v1/ml/predict-risk` until that service contract exists
+- **ML risk scoring** is available through the internal `/api/v1/ml/predict-risk` endpoint; live ETL calls it with `X-Internal-Service`
+- **Telemetry ingestion** returns `202` after validation and queueing; the Celery worker performs ML scoring asynchronously
 
 ## API Endpoints
 
@@ -171,6 +249,7 @@ maintain-nexus/
 | GET | `/api/v1/dashboard/executive-summary` | Read executive downtime aggregation |
 | GET | `/api/v1/events` | Authenticated server-sent events stream |
 | POST | `/api/v1/notifications/sms` | Internal-only notification queue boundary |
+| POST | `/api/v1/ml/predict-risk` | Internal-only XGBoost risk scoring contract |
 
 ## Dashboard Summary Endpoint
 
@@ -231,7 +310,38 @@ pytest
 pytest -v
 ```
 
+`tests/test_db_migrations_grants.py` is a Postgres integration test proving that the `maintain_app`
+role is rejected by the database itself on `UPDATE`/`DELETE` against `audit_logs` and
+`work_order_lifecycle_events`. It skips automatically when no Postgres is reachable. To run it for
+real, point `TEST_ADMIN_DATABASE_URL` at an admin connection (e.g. the Compose `postgres_db` service
+published to the host) before running `pytest`.
+
 ## Release Notes
+
+### Database setup helper script
+
+- Added `scripts/setup_db.sh`, a wrapper around `docker-compose.yml` for first-time local setup: it
+  creates `.env` from `.env.example` if missing, generates a random value for any of
+  `POSTGRES_PASSWORD` / `APP_DB_PASSWORD` / `AUTH_SECRET` / `INTERNAL_SERVICE_TOKEN` left blank,
+  brings up `postgres_db` and `redis`, waits for Postgres to report healthy, and runs `db_migrations`.
+  It does not add any database logic of its own — `database/run_migrations.py` remains the one place
+  that creates the schema, the `maintain_app` role, and its grants.
+- Added a `Makefile` (`up`, `down`, `migrate`, `logs`, `ps`) so `make up` runs the setup script and
+  then starts the full stack in one command; `make down`/`make migrate` wrap the corresponding
+  `docker compose` calls.
+
+### Database migration service and least-privilege application role
+
+- Added a one-shot `db_migrations` Compose service that runs schema creation, additive column
+  migrations, and database grants as the PostgreSQL admin role, before any other service starts.
+- Added a dedicated `maintain_app` runtime role: full CRUD on operational tables, but only
+  `SELECT`/`INSERT` on `audit_logs` and `work_order_lifecycle_events` — `UPDATE`/`DELETE` on those
+  two tables is revoked at the database grant level. `web_api`, `celery_worker`, and `celery_beat`
+  now connect as `maintain_app` instead of the PostgreSQL admin role.
+- Removed the old startup schema initialization (`database/init_db.py`) from the API lifespan and
+  the Celery worker-ready signal, now that `db_migrations` runs before those services start.
+- Added `tests/test_db_migrations_grants.py` to prove the grant revocation against a real Postgres
+  database rather than by inspection of the migration SQL alone.
 
 ### Backend schema and alert-work order correlation
 

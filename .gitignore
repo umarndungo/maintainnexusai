@@ -103,3 +103,4 @@ yarn-error.log*
 
 # Next.js generated files
 .next/
+.claude/

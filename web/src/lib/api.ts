@@ -8,7 +8,12 @@ export type ApiResult<T> = {
 
 export type UserRole = "engineer" | "supervisor" | "executive" | "technician";
 export type CurrentUser = { id: string; name?: string; role: UserRole; station_ids: string[] };
-export type RecentAlert = { task_id?: string; equipment_id: string; severity?: string; failure_code?: string; received_at?: string };
+export type Prediction = { failure_probability: number; failure_predicted: boolean; risk_level: string; threshold: number; prediction_horizon_hours: number };
+export type Thresholds = { failure_probability: number; warning_probability: number | null; prediction_horizon_hours: number; source: string; sensor_limits: null };
+export type EquipmentReading = { id: number; equipment_id: string; station_id?: string; telemetry: Record<string, string | number | null>; prediction: Prediction | null; state: string; evaluation_reason?: string; received_at: string };
+export type Monitoring = { equipment: EquipmentReading[]; thresholds: Thresholds; source: string };
+export type Technician = { id: string; name: string; certs: string[]; on_shift: boolean; active_work_orders: number };
+export type RecentAlert = { task_id?: string; equipment_id: string; part_number?: string; severity?: string; failure_code?: string; received_at?: string; required_cert?: string; telemetry?: Record<string, string | number | null>; prediction?: Prediction; threshold?: number; risk_probability?: number; pipeline?: { status: string; reason?: string } };
 export type LifecycleEvent = { id: number; from_status?: string; to_status: string; actor_id: string; actor_role: string; note?: string; timestamp: string; risk_drivers?: WorkOrder["risk_drivers"]; top_features?: string[] };
 
 export type DashboardSummary = {
@@ -38,6 +43,7 @@ export type WorkOrder = {
   reserved_part?: string;
   status?: string;
   created_at?: string;
+  alert_task_id?: string;
   risk_drivers?: Array<{ feature: string; value: number; reason: string }>;
 };
 
@@ -128,4 +134,20 @@ export async function getCurrentUser(token: string): Promise<ApiResult<CurrentUs
 
 export function getAuditLogs(token: string) {
   return request<AuditLog[]>("/api/v1/dashboard/audit-logs", token);
+}
+
+export function getMonitoring(token: string) {
+  return request<Monitoring>("/api/v1/monitoring/equipment", token);
+}
+
+export function getEquipmentHistory(id: string, token: string) {
+  return request<{ readings: EquipmentReading[]; thresholds: Thresholds }>(`/api/v1/monitoring/equipment/${encodeURIComponent(id)}/history`, token);
+}
+
+export function getMaintenanceData(token: string) {
+  return Promise.all([
+    request<WorkOrder[]>("/api/v1/maintenance/work-orders", token),
+    request<RecentAlert[]>("/api/v1/alerts/recent", token),
+    request<{ available_technicians: Technician[]; source: string }>("/api/v1/hr/technicians/available", token),
+  ]);
 }

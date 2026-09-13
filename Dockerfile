@@ -12,4 +12,4 @@ COPY . .
 
 USER appuser
 
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn api.main:app --host \"${API_HOST:-0.0.0.0}\" --port \"${API_CONTAINER_PORT:-8000}\""]
