@@ -32,7 +32,7 @@ from database.db import SessionLocal
 from database.lifecycle import append_lifecycle_event, current_work_order_status
 from database.models import WorkOrderRecord
 from etl.extract import get_technician, resolve_cert_for_failure
-from etl.telemetry import generate_telemetry, process_raw_telemetry
+from etl.telemetry import generate_telemetry
 from etl.ml_client import predict_risk
 from config import CELERY_BROKER_URL
 
@@ -91,6 +91,36 @@ def _write_audit_log(event_name: str, payload: dict):
         db.rollback()
     finally:
         db.close()
+
+
+def _telemetry_check_payload(telemetry: dict, score_result: dict, alert_created: bool) -> dict:
+    """Build the audit payload for one scored telemetry reading.
+
+    Written for *every* reading that reaches the model — not just the ones
+    that clear the alert threshold — so ``api.monitoring`` can reconstruct
+    each equipment's current state and history straight from the audit log
+    instead of needing a separate telemetry table. ``health_status`` is kept
+    (alongside the clearer ``risk_level``) because ``dashboard.get_dashboard_summary``
+    already reads it from this event.
+    """
+    risk_probability = (
+        score_result.get("risk_score", score_result.get("failure_probability", 0.0))
+        if isinstance(score_result, dict)
+        else float(score_result)
+    )
+    risk_level = score_result.get("risk_level") if isinstance(score_result, dict) else None
+    return {
+        "equipment_id": telemetry.get("equipment_id"),
+        "station_id": telemetry.get("station_id"),
+        "telemetry": telemetry,
+        "risk_probability": round(float(risk_probability), 4),
+        "risk_level": risk_level,
+        "health_status": risk_level,
+        "prediction_horizon_hours": score_result.get("prediction_horizon_hours", 6) if isinstance(score_result, dict) else 6,
+        "top_features": score_result.get("top_features", []) if isinstance(score_result, dict) else [],
+        "model_version": score_result.get("model_version") if isinstance(score_result, dict) else None,
+        "alert_created": alert_created,
+    }
 
 
 def _find_existing_work_order_by_task_id(task_id: str) -> dict | None:
@@ -190,16 +220,22 @@ def process_alert(self, alert: dict):
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
 def process_telemetry(self, telemetry: dict):
     """Score validated telemetry in Celery and enqueue qualifying alerts."""
-    from etl.telemetry import process_raw_telemetry
+    from etl.telemetry import score_and_decide
 
     task_id = telemetry.get("task_id")
     logger.info("Scoring telemetry %s in Celery.", task_id or "N/A")
     try:
-        alert_payload = process_raw_telemetry(telemetry)
+        score_result, alert_payload = score_and_decide(telemetry)
     except Exception as exc:
         logger.exception("Risk scoring failed for telemetry %s", task_id or "N/A")
         _write_audit_log("RISK_SCORING_FAILED", {"telemetry": telemetry, "error": str(exc)})
         raise self.retry(exc=exc)
+
+    if score_result is not None:
+        _write_audit_log(
+            "TELEMETRY_CHECK",
+            _telemetry_check_payload(telemetry, score_result, alert_created=alert_payload is not None),
+        )
 
     if alert_payload is None:
         _write_audit_log("TELEMETRY_ACCEPTED", {"telemetry": telemetry, "alert_created": False})
@@ -252,8 +288,17 @@ def scheduled_pipeline_run():
     Cron-like job: generate telemetry, score it, and emit a maintenance alert
     only when predicted failure risk exceeds the configured threshold.
     """
+    from etl.telemetry import score_and_decide
+
     telemetry = generate_telemetry()
-    alert_payload = process_raw_telemetry(telemetry)
+    score_result, alert_payload = score_and_decide(telemetry)
+
+    if score_result is not None:
+        _write_audit_log(
+            "TELEMETRY_CHECK",
+            _telemetry_check_payload(telemetry, score_result, alert_created=alert_payload is not None),
+        )
+
     if alert_payload is None:
         logger.info(
             "Telemetry did not meet the alert creation criteria for %s.",
@@ -263,17 +308,6 @@ def scheduled_pipeline_run():
         return
 
     logger.info("High-risk telemetry detected, dispatching alert: %s", alert_payload)
-    _write_audit_log(
-        "TELEMETRY_CHECK",
-        {
-            "telemetry": telemetry,
-            "risk_probability": alert_payload["risk_probability"],
-            "risk_level": alert_payload.get("risk_level"),
-            "top_features": alert_payload.get("top_features", []),
-            "health_status": alert_payload.get("risk_level"),
-            "timestamp": telemetry["timestamp"],
-        },
-    )
     _write_audit_log("TELEMETRY_RECEIVED", telemetry)
     _write_audit_log("ALERT_RECEIVED", alert_payload)
 
