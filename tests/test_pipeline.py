@@ -178,6 +178,87 @@ class TestProcessRawTelemetry:
         assert process_raw_telemetry(telemetry) is None
 
 
+class TestMLScoringIntegration:
+    """End-to-end scoring against the real trained model — nothing mocked.
+
+    These exist because every other ML test mocks ``predict_risk``/
+    ``score_telemetry`` directly, which let a real schema mismatch between
+    the public telemetry contract and the model's feature contract ship
+    unnoticed (equipment_type vs. asset_type, missing 58 engineered
+    features, an operating_state value the model was never trained on).
+    Redis is optional here: with no broker reachable, feature engineering
+    degrades to single-sample statistics instead of failing.
+    """
+
+    def test_legacy_telemetry_scores_without_error(self):
+        """The public /alerts/telemetry contract (5 legacy fields only)
+        must still produce a real prediction, not a silent failure."""
+        import asyncio
+
+        from api.ml import RiskRequest, predict_risk as predict_risk_endpoint
+        from etl.telemetry import enrich_for_scoring
+
+        legacy_payload = {
+            "equipment_id": "PUMP-101",
+            "temperature": 108.0,
+            "vibration": 6.4,
+            "installation_age_hours": 14500,
+            "timestamp": "2026-09-13T00:00:00Z",
+        }
+        enriched = enrich_for_scoring(legacy_payload)
+        result = asyncio.run(predict_risk_endpoint(RiskRequest(**enriched)))
+
+        assert 0.0 <= result["risk_score"] <= 1.0
+        assert result["risk_level"] in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+        assert result["equipment_type"] in {"PUMP", "LOADING_ARM", "VALVE"}
+
+    def test_generated_telemetry_scores_without_error(self):
+        """The internal Celery Beat demo generator must also score cleanly."""
+        import asyncio
+
+        from api.ml import RiskRequest, predict_risk as predict_risk_endpoint
+        from etl.telemetry import generate_telemetry
+
+        result = asyncio.run(predict_risk_endpoint(RiskRequest(**generate_telemetry())))
+
+        assert 0.0 <= result["risk_score"] <= 1.0
+
+    def test_repeated_readings_for_the_same_equipment_build_real_history(self):
+        """Rolling features must reflect actual prior readings for a given
+        equipment_id, not a self-referential copy of the current sample.
+
+        Requires a reachable Redis (the feature-history store); skips
+        cleanly otherwise since feature_engineering intentionally degrades
+        to single-sample stats rather than failing when Redis is down.
+        """
+        import redis as redis_lib
+
+        from config import CELERY_BROKER_URL
+        from etl.telemetry import enrich_for_scoring
+
+        try:
+            redis_lib.Redis.from_url(
+                CELERY_BROKER_URL, socket_connect_timeout=1, socket_timeout=1
+            ).ping()
+        except redis_lib.RedisError as exc:
+            pytest.skip(f"No reachable Redis for feature-history test: {exc}")
+
+        base = {
+            "equipment_id": "PUMP-999",
+            "temperature": 70.0,
+            "installation_age_hours": 5000,
+            "timestamp": "2026-09-13T00:00:00Z",
+        }
+        last = None
+        for vibration in (1.0, 2.0, 3.0, 4.0, 5.0):
+            last = enrich_for_scoring({**base, "vibration": vibration})
+
+        # lag_1 must be the immediately preceding reading (4.0), not the
+        # current one — this only holds if real history was consulted.
+        assert last["vibration_mm_s_lag_1"] == 4.0
+        assert last["vibration_mm_s_delta_1"] == pytest.approx(1.0)
+
+
 # =========================================================================
 # Tests: transform.py
 # =========================================================================
