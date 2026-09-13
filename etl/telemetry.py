@@ -44,6 +44,20 @@ _ASSET_TYPES_BY_PREFIX = {
 _OPERATING_STATES = ("LOADING", "IDLE")
 _ASSET_ID_BUCKETS = {"VALVE": 24, "PUMP": 12, "LOADING_ARM": 12}
 
+# The probability at which we actually dispatch a maintenance alert/work
+# order — deliberately higher than the model's own validation threshold
+# (ml.models.model_metadata.json's "threshold", ~0.12) so routine elevated
+# risk doesn't spam the maintenance queue. Shared with api.monitoring so the
+# equipment-watch UI classifies "requires attention" the same way this
+# module decides whether to raise an alert.
+ALERT_CREATION_THRESHOLD = 0.85
+
+# Fallback label for a prediction whose real model_version couldn't be
+# determined (e.g. the scoring service returned a bare number instead of
+# the usual dict). Not a placeholder for "no model was used" — scoring
+# always goes through the trained XGBoost model in ml/scoring.py.
+_UNKNOWN_MODEL_VERSION = "unknown"
+
 
 def _infer_asset_type(equipment_id: str) -> str:
     prefix = equipment_id.split("-")[0]
@@ -149,7 +163,7 @@ def generate_telemetry() -> Dict[str, Any]:
 def build_alert_from_telemetry(
     telemetry: Dict[str, Any],
     risk_probability: float,
-    model_version: str = "mock-v1",
+    model_version: str = _UNKNOWN_MODEL_VERSION,
 ) -> Dict[str, Any]:
     """Build an alert payload from high-risk telemetry."""
     temperature = telemetry.get("temperature", 0.0)
@@ -178,27 +192,39 @@ def build_alert_from_telemetry(
     }
 
 
-def process_raw_telemetry(
+def score_and_decide(
     telemetry: Dict[str, Any],
-    alert_threshold: float = 0.85,
-    model_version: str = "mock-v1",
-) -> Dict[str, Any] | None:
-    """Validate raw telemetry and build an alert payload only when it qualifies."""
+    alert_threshold: float = ALERT_CREATION_THRESHOLD,
+    model_version: str = _UNKNOWN_MODEL_VERSION,
+) -> tuple[Dict[str, Any] | None, Dict[str, Any] | None]:
+    """Validate and score raw telemetry once, returning both results.
+
+    Returns ``(score_result, alert_payload)``:
+      - ``score_result`` is the model's raw prediction (``None`` if the
+        telemetry failed validation or the scoring service was unreachable)
+        — this is what a caller needs to record *every* reading's
+        evaluated risk, not just the ones that become alerts.
+      - ``alert_payload`` is the alert to dispatch, or ``None`` when the
+        reading didn't qualify for one.
+
+    ``process_raw_telemetry`` below is a thin wrapper over this for callers
+    that only care about the alert outcome.
+    """
     if not validate_telemetry_data(telemetry):
-        return None
+        return None, None
 
     # Score using a fully model-featured copy; the alert payload below still
     # carries the caller's original (unenriched) telemetry.
     score_result = predict_risk(enrich_for_scoring(telemetry))
     if score_result is None:
-        return None
+        return None, None
     risk_probability = (
         score_result.get("risk_score", 0.0)
         if isinstance(score_result, dict)
         else float(score_result)
     )
     if risk_probability <= alert_threshold:
-        return None
+        return score_result, None
 
     alert_payload = build_alert_from_telemetry(
         telemetry=telemetry,
@@ -209,4 +235,14 @@ def process_raw_telemetry(
     alert_payload["top_features"] = score_result.get("top_features", [])
     alert_payload["prediction_id"] = score_result.get("prediction_id")
     alert_payload["task_id"] = str(uuid.uuid4())
+    return score_result, alert_payload
+
+
+def process_raw_telemetry(
+    telemetry: Dict[str, Any],
+    alert_threshold: float = ALERT_CREATION_THRESHOLD,
+    model_version: str = _UNKNOWN_MODEL_VERSION,
+) -> Dict[str, Any] | None:
+    """Validate raw telemetry and build an alert payload only when it qualifies."""
+    _, alert_payload = score_and_decide(telemetry, alert_threshold, model_version)
     return alert_payload
