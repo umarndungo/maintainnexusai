@@ -68,8 +68,15 @@ maintain-nexus/
 
 3. **Launch backend services with Docker Compose:**
    ```bash
-   docker compose up --build
+   make up
    ```
+
+   `make up` runs `scripts/setup_db.sh` (fills in any blank required secret —
+   `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`, `AUTH_SECRET`, `INTERNAL_SERVICE_TOKEN` — starts
+   `postgres_db`/`redis`, waits for Postgres to report healthy, and runs `db_migrations`), then
+   brings up the rest of the stack. Equivalent to running `./scripts/setup_db.sh` followed by
+   `docker compose up -d --build`; use the plain `docker compose up --build` form directly if you'd
+   rather manage `.env` and migrations yourself.
 
    Compose starts:
    - `web_api`: FastAPI at `http://localhost:8000`
@@ -124,12 +131,12 @@ maintain-nexus/
 
 8. **Stop the backend:**
    ```bash
-   docker compose down
+   make down
    ```
 
    To run the migration/grant job again after changing schema code:
    ```bash
-   docker compose run --rm db_migrations
+   make migrate
    ```
 
    This job is idempotent. It does not delete historical rows or drop the legacy
@@ -147,7 +154,7 @@ maintain-nexus/
 
 1. Start the backend and required services:
    ```bash
-   docker compose up --build
+   make up
    ```
 2. Confirm the API is available at:
    - `http://localhost:8000/docs`
@@ -310,6 +317,18 @@ real, point `TEST_ADMIN_DATABASE_URL` at an admin connection (e.g. the Compose `
 published to the host) before running `pytest`.
 
 ## Release Notes
+
+### Database setup helper script
+
+- Added `scripts/setup_db.sh`, a wrapper around `docker-compose.yml` for first-time local setup: it
+  creates `.env` from `.env.example` if missing, generates a random value for any of
+  `POSTGRES_PASSWORD` / `APP_DB_PASSWORD` / `AUTH_SECRET` / `INTERNAL_SERVICE_TOKEN` left blank,
+  brings up `postgres_db` and `redis`, waits for Postgres to report healthy, and runs `db_migrations`.
+  It does not add any database logic of its own — `database/run_migrations.py` remains the one place
+  that creates the schema, the `maintain_app` role, and its grants.
+- Added a `Makefile` (`up`, `down`, `migrate`, `logs`, `ps`) so `make up` runs the setup script and
+  then starts the full stack in one command; `make down`/`make migrate` wrap the corresponding
+  `docker compose` calls.
 
 ### Database migration service and least-privilege application role
 
