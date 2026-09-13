@@ -1,5 +1,18 @@
 # MaintainNexus - Predictive Maintenance & Work Order Dispatch Infrastructure
 
+> Phase 2 web dashboard: use `web/` (Next.js). Flutter remains the mobile target. The Flutter web/static-hosting sections below describe the legacy target; use `docs/04-DEPLOYMENT-GUIDE.md` for current web deployment. Never replace the team guides in `docs/` with web build output.
+
+## Run the current Next.js dashboard
+
+```powershell
+docker compose up --build
+```
+
+This includes the web container at http://localhost:3000 and the backend at http://localhost:8000/docs. For frontend development against a local or shared API, see `web/README.md`. The current backend demo user IDs are `engineer-demo`, `supervisor-demo`, and `executive-demo`.
+
+Current contract gaps are recorded in `docs/FRONTEND-INTEGRATION-STATUS.md`; a passing frontend build does not establish completion of every backend/ML/mobile requirement.
+
+
 MaintainNexus is a predictive maintenance and work order dispatch system designed to streamline industrial equipment maintenance workflows. It provides a complete pipeline from alert ingestion through technician dispatch, with automated scheduling, audit logging, inventory checks, and a Flutter dashboard UI.
 
 ## Architecture Overview
@@ -367,18 +380,17 @@ netlify deploy --dir=build/web --prod
 ```bash
 cd maintain_nexus_ui
 flutter build web --release
-rm -rf ../docs
-mkdir ../docs
-cp -r build/web/* ../docs/
+mkdir -p ../legacy-web-site
+cp -r build/web/* ../legacy-web-site/
 cd ..
-git add docs
+git add legacy-web-site
 git commit -m "Deploy Flutter web dashboard to GitHub Pages"
 git push
 ```
 
 Then enable GitHub Pages in repository settings:
 - Source: `main` branch
-- Folder: `/docs`
+- Folder: use a separate publishing branch or hosting provider; keep `/docs` for team guides.
 
 #### Option B: Use `gh-pages` branch
 
