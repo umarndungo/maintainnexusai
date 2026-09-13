@@ -18,6 +18,7 @@ from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from api.dashboard import router as dashboard_router
 from api.events import router as events_router
+from api.hse import router as hse_router
 from api.auth import router as auth_router
 from api.equipment import router as equipment_router
 from api.maintenance import router as maintenance_router
@@ -108,6 +109,7 @@ async def metrics(_user: dict = Depends(get_current_user)) -> Response:
 app.include_router(dashboard_router)
 app.include_router(auth_router)
 app.include_router(events_router)
+app.include_router(hse_router)
 app.include_router(equipment_router)
 app.include_router(maintenance_router)
 app.include_router(notifications_router)

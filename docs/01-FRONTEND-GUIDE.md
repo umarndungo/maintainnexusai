@@ -104,3 +104,10 @@ Hard constraints:
   render (not compute) the chain-integrity status from /audit-logs/verify.
 Help me build against this contract precisely — if I ask for something outside it, flag that first.
 ```
+
+
+## Current implementation and backend handoff
+
+The Next.js app is in `web/`. See `FRONTEND-INTEGRATION-STATUS.md` for the current connection matrix and backend dependencies. The latest backend login payload is `{ "user_id": "engineer-demo" }`; password login is not implemented. The web validates `/auth/me` on protected page loads and uses a one-hour httpOnly session cookie. Live transport is SSE through a same-origin Next.js proxy.
+
+The existing HSE and telemetry/work-order presentation controls are preserved. HSE is an optional simulated extension outside the frozen loading-point automation MVP; it does not command equipment. Missing verification, savings, dated uptime series, station comparison, and risk-driver fields must be supplied by backend owners before those views can show results.
