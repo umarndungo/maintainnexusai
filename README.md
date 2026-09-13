@@ -136,6 +136,7 @@ maintain-nexus/
 - **Internal services** use `X-Internal-Service`; `/api/v1/notifications/sms` is never available to end-user roles
 - **Downtime** is persisted as equipment windows opened at dispatch and closed at completion
 - **Live events** are available through the authenticated `/api/v1/events` SSE feed
+- **ML service integration** is intentionally deferred; the live ETL path must not be documented as calling `/api/v1/ml/predict-risk` until that service contract exists
 
 ## API Endpoints
 
@@ -147,6 +148,16 @@ maintain-nexus/
 | POST | `/api/v1/maintenance/work-orders` | Dispatch a work order to a technician |
 | GET | `/api/v1/dashboard/summary` | Retrieve dashboard summary counts, available technicians, and inventory status |
 | POST | `/api/v1/alerts/telemetry` | Ingest raw telemetry and create an alert payload when the risk threshold is exceeded |
+| POST | `/api/v1/auth/login` | Issue a one-hour signed bearer token for a demo user |
+| GET | `/api/v1/auth/me` | Return the authenticated user and role/station claims |
+| PATCH | `/api/v1/maintenance/work-orders/{id}/approve` | Engineer/supervisor approval transition |
+| PATCH | `/api/v1/maintenance/work-orders/{id}/reject` | Engineer/supervisor rejection transition |
+| PATCH | `/api/v1/maintenance/work-orders/{id}/escalate` | Supervisor/internal SLA escalation transition |
+| GET | `/api/v1/maintenance/work-orders/{id}/lifecycle` | Read persisted lifecycle history |
+| GET | `/api/v1/dashboard/equipment/{id}/downtime` | Read equipment downtime windows |
+| GET | `/api/v1/dashboard/executive-summary` | Read executive downtime aggregation |
+| GET | `/api/v1/events` | Authenticated server-sent events stream |
+| POST | `/api/v1/notifications/sms` | Internal-only notification queue boundary |
 
 ## Dashboard Summary Endpoint
 
