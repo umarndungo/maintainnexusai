@@ -1,5 +1,18 @@
 # MaintainNexus - Predictive Maintenance & Work Order Dispatch Infrastructure
 
+> Phase 2 web dashboard: use `web/` (Next.js). Flutter remains the mobile target. The Flutter web/static-hosting sections below describe the legacy target; use `docs/04-DEPLOYMENT-GUIDE.md` for current web deployment. Never replace the team guides in `docs/` with web build output.
+
+## Run the current Next.js dashboard
+
+```powershell
+docker compose up --build
+```
+
+This includes the web container at http://localhost:3000 and the backend at http://localhost:8000/docs. For frontend development against a local or shared API, see `web/README.md`. The current backend demo user IDs are `engineer-demo`, `supervisor-demo`, and `executive-demo`.
+
+Current contract gaps are recorded in `docs/FRONTEND-INTEGRATION-STATUS.md`; a passing frontend build does not establish completion of every backend/ML/mobile requirement.
+
+
 MaintainNexus is a predictive maintenance and work order dispatch system designed to streamline industrial equipment maintenance workflows. It provides a complete pipeline from alert ingestion through technician dispatch, with automated scheduling, audit logging, inventory checks, and a Flutter dashboard UI.
 
 ## Architecture Overview
@@ -123,7 +136,7 @@ maintain-nexus/
 - **Technician lookup** via `/api/v1/hr/technicians/available`
 - **Inventory checks** via `/api/v1/warehouse/stock`
 - **Work order dispatch** via `/api/v1/maintenance/work-orders`
-- **Work order status** is computed from `created_at` and returns `duration_seconds` for elapsed time
+- **Work order status** is derived exclusively from append-only lifecycle events
 - **Alert/work order correlation** via `alert_task_id`, preserving the originating alert ID on the dispatched work order
 - **Dashboard summary** via `/api/v1/dashboard/summary`
 - **Startup schema migration** automatically adds the `alert_task_id` column for existing PostgreSQL databases on first backend startup
@@ -132,6 +145,11 @@ maintain-nexus/
 - **Duplicate-safe APIs** dedupe work orders and recent alerts before returning lists
 - **Flutter UI** with live counts, technician availability, inventory status, and navigation to recent orders and alerts
 - **Backend refresh behavior** handles eventual consistency for async alert ingestion by polling the summary endpoint after task submission
+- **Phase 2 security** requires signed bearer tokens and server-side role checks on every API router
+- **Internal services** use `X-Internal-Service`; `/api/v1/notifications/sms` is never available to end-user roles
+- **Downtime** is persisted as equipment windows opened at dispatch and closed at completion
+- **Live events** are available through the authenticated `/api/v1/events` SSE feed
+- **ML service integration** is intentionally deferred; the live ETL path must not be documented as calling `/api/v1/ml/predict-risk` until that service contract exists
 
 ## API Endpoints
 
@@ -143,6 +161,16 @@ maintain-nexus/
 | POST | `/api/v1/maintenance/work-orders` | Dispatch a work order to a technician |
 | GET | `/api/v1/dashboard/summary` | Retrieve dashboard summary counts, available technicians, and inventory status |
 | POST | `/api/v1/alerts/telemetry` | Ingest raw telemetry and create an alert payload when the risk threshold is exceeded |
+| POST | `/api/v1/auth/login` | Issue a one-hour signed bearer token for a demo user |
+| GET | `/api/v1/auth/me` | Return the authenticated user and role/station claims |
+| PATCH | `/api/v1/maintenance/work-orders/{id}/approve` | Engineer/supervisor approval transition |
+| PATCH | `/api/v1/maintenance/work-orders/{id}/reject` | Engineer/supervisor rejection transition |
+| PATCH | `/api/v1/maintenance/work-orders/{id}/escalate` | Supervisor/internal SLA escalation transition |
+| GET | `/api/v1/maintenance/work-orders/{id}/lifecycle` | Read persisted lifecycle history |
+| GET | `/api/v1/dashboard/equipment/{id}/downtime` | Read equipment downtime windows |
+| GET | `/api/v1/dashboard/executive-summary` | Read executive downtime aggregation |
+| GET | `/api/v1/events` | Authenticated server-sent events stream |
+| POST | `/api/v1/notifications/sms` | Internal-only notification queue boundary |
 
 ## Dashboard Summary Endpoint
 
@@ -178,6 +206,9 @@ The dashboard now includes:
 ## Database Schema
 
 - **work_orders** — Tracks dispatched work orders with equipment, technician, part, status, timestamps, and optional `alert_task_id` linking to the source alert
+- **work_order_lifecycle_events** — Hash-chained, insert-only lifecycle transitions; current status is read from the latest event
+- **downtime_windows** — Equipment downtime intervals linked to work orders
+- **audit_logs** — Hash-chained append-only operational audit events
 - **audit_logs** — Records all pipeline events with event name, payload, and timestamp
 
 ## Work Order Lifecycle
@@ -258,18 +289,17 @@ netlify deploy --dir=build/web --prod
 ```bash
 cd maintain_nexus_ui
 flutter build web --release
-rm -rf ../docs
-mkdir ../docs
-cp -r build/web/* ../docs/
+mkdir -p ../legacy-web-site
+cp -r build/web/* ../legacy-web-site/
 cd ..
-git add docs
+git add legacy-web-site
 git commit -m "Deploy Flutter web dashboard to GitHub Pages"
 git push
 ```
 
 Then enable GitHub Pages in repository settings:
 - Source: `main` branch
-- Folder: `/docs`
+- Folder: use a separate publishing branch or hosting provider; keep `/docs` for team guides.
 
 #### Option B: Use `gh-pages` branch
 

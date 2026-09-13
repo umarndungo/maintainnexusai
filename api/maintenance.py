@@ -14,31 +14,31 @@ import uuid
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from database.auditing import append_audit_log
 from database.db import SessionLocal
 from database.models import AuditLog
+from api.auth import require_internal_or_user
 from etl.ge_validation import validate_telemetry_data
 from etl.metrics import alerts_ingested
 from etl.telemetry import process_raw_telemetry
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/alerts", tags=["Alerts"])
+router = APIRouter(
+    prefix="/api/v1/alerts",
+    tags=["Alerts"],
+    dependencies=[Depends(require_internal_or_user)],
+)
 
 
 def _write_audit_log(event_name: str, payload: dict):
     db = SessionLocal()
     try:
-        db.add(
-            AuditLog(
-                event_name=event_name,
-                payload=json.dumps(payload),
-                timestamp=datetime.now(timezone.utc),
-            )
-        )
+        append_audit_log(db, event_name, payload)
         db.commit()
     finally:
         db.close()
@@ -103,13 +103,7 @@ async def receive_alert(alert: AlertPayload):
     # Store the task_id with the alert payload for later retrieval.
     db = SessionLocal()
     try:
-        db.add(
-            AuditLog(
-                event_name="ALERT_RECEIVED",
-                payload=json.dumps(persisted_payload),
-                timestamp=datetime.now(timezone.utc),
-            )
-        )
+        append_audit_log(db, "ALERT_RECEIVED", persisted_payload)
         db.commit()
     finally:
         db.close()

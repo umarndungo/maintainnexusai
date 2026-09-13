@@ -10,7 +10,7 @@ Defines the two core tables used by MaintainNexus:
                      payload that triggered it).
 """
 
-from sqlalchemy import Column, String, Integer, DateTime
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Index
 from sqlalchemy.orm import declarative_base
 import datetime
 
@@ -33,8 +33,6 @@ class WorkOrderRecord(Base):
         The technician assigned to this work order.
     part_number : str
         The replacement part that was reserved for the job.
-    status : str
-        Current lifecycle state (default ``"DISPATCHED"``).
     created_at : datetime
         Timestamp of when this record was inserted (UTC).
     """
@@ -45,8 +43,29 @@ class WorkOrderRecord(Base):
     technician_id = Column(String, nullable=False)
     part_number = Column(String, nullable=False)
     alert_task_id = Column(String, nullable=True)
-    status = Column(String, default="DISPATCHED")
     created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
+
+
+class WorkOrderLifecycleEvent(Base):
+    """Immutable, hash-chained transition in a work-order lifecycle."""
+
+    __tablename__ = "work_order_lifecycle_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    work_order_id = Column(String, ForeignKey("work_orders.id"), nullable=False)
+    from_status = Column(String, nullable=True)
+    to_status = Column(String, nullable=False)
+    actor_id = Column(String, nullable=False)
+    actor_role = Column(String, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
+    note = Column(Text, nullable=True)
+    event_hash = Column(String(64), nullable=False, unique=True)
+    previous_event_hash = Column(String(64), nullable=False)
+    supersedes_event_id = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index("ix_lifecycle_work_order_timestamp", "work_order_id", "timestamp"),
+    )
 
 
 class AuditLog(Base):
@@ -74,3 +93,19 @@ class AuditLog(Base):
     event_name = Column(String, nullable=False)
     payload = Column(String, nullable=False)
     timestamp = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
+    event_hash = Column(String(64), nullable=True, unique=True)
+    previous_event_hash = Column(String(64), nullable=True)
+    supersedes_event_id = Column(Integer, nullable=True)
+
+
+class DowntimeWindow(Base):
+    """Equipment downtime interval opened and closed by lifecycle transitions."""
+
+    __tablename__ = "downtime_windows"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    equipment_id = Column(String, nullable=False)
+    work_order_id = Column(String, ForeignKey("work_orders.id"), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+    cause_alert_id = Column(String, nullable=True)
