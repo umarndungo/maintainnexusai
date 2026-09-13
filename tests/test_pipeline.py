@@ -119,7 +119,8 @@ class TestTelemetryValidation:
 class TestProcessRawTelemetry:
     """Ensure raw telemetry is validated before alert creation."""
 
-    def test_low_risk_telemetry_returns_none(self):
+    @patch("etl.telemetry.predict_risk", return_value={"risk_score": 0.1})
+    def test_low_risk_telemetry_returns_none(self, mock_score):
         telemetry = {
             "equipment_id": "EQ-1",
             "temperature": 70.0,
@@ -129,7 +130,26 @@ class TestProcessRawTelemetry:
         }
         assert process_raw_telemetry(telemetry) is None
 
-    def test_high_risk_telemetry_generates_alert(self):
+    def test_generated_telemetry_contains_model_features(self):
+        from etl.telemetry import generate_telemetry
+        from ml.scoring import FEATURES
+
+        telemetry = generate_telemetry()
+
+        assert set(FEATURES).issubset(telemetry)
+        assert telemetry["asset_type"] in {"PUMP", "LOADING_ARM", "VALVE"}
+
+    @patch(
+        "etl.telemetry.predict_risk",
+        return_value={
+            "risk_score": 0.95,
+            "risk_level": "CRITICAL",
+            "model_version": "test-model",
+            "top_features": ["vibration_mm_s"],
+            "prediction_id": "prediction-1",
+        },
+    )
+    def test_high_risk_telemetry_generates_alert(self, mock_score):
         telemetry = {
             "equipment_id": "EQ-1",
             "temperature": 110.0,

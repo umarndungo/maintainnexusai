@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic
 requests
+python-dotenv
 sqlalchemy
 psycopg2-binary
 celery
@@ -10,3 +11,8 @@ great_expectations
 pandas
 pytest
 prometheus-client
+xgboost
+scikit-learn
+numpy
+apscheduler
+Faker

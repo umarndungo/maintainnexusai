@@ -34,7 +34,7 @@ maintain-nexus/
     flutter config --enable-windows-desktop
     ```
 
-## Quickstart Instructions
+## Backend Quickstart
 
 1. **Clone the repository:**
    ```bash
@@ -42,17 +42,75 @@ maintain-nexus/
    cd maintain-nexus
    ```
 
-2. **Launch backend services with Docker Compose:**
+2. **Create the local environment file:**
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edit `.env` to set the host ports, public API/domain address, database credentials, `AUTH_SECRET`,
+   and `INTERNAL_SERVICE_TOKEN`. `.env` is ignored by Git and must never be committed. Compose uses
+   `API_BASE_URL` for host/public clients and `API_INTERNAL_BASE_URL` with Docker service names
+   (`web_api`, `postgres_db`, and `redis`) for container-to-container traffic. Host clients use the
+   published `API_PORT`.
+
+3. **Launch backend services with Docker Compose:**
    ```bash
    docker compose up --build
    ```
 
-   The backend will auto-create missing tables and apply a safe `alert_task_id` schema migration on first startup.
+   Compose starts:
+   - `web_api`: FastAPI at `http://localhost:8000`
+   - `postgres_db`: PostgreSQL on port `5432`
+   - `redis`: Celery broker/backend on port `6379`
+   - `celery_worker`: asynchronous alert, ML scoring, and work-order processing
+   - `celery_beat`: five-minute demo telemetry and stale-approval escalation schedules
 
-3. **Open API docs:**
-   Visit [http://localhost:8000/docs](http://localhost:8000/docs).
+   The API auto-creates missing tables and applies safe additive schema updates on startup. The
+   worker and beat services wait for healthy PostgreSQL and Redis before starting.
 
-4. **Run the Flutter dashboard:**
+4. **Open API docs:**
+   Visit `http://localhost:${API_PORT}/docs`, using the `API_PORT` value from `.env`.
+
+5. **Get a development bearer token:**
+   ```bash
+   TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"user_id":"engineer-demo"}' | python -c \
+     'import json,sys; print(json.load(sys.stdin)["access_token"])')
+   ```
+
+   The available development users are `tech-demo`, `engineer-demo`, `executive-demo`, and
+   `supervisor-demo`. Production authentication must replace these demo users and set a strong
+   `AUTH_SECRET`.
+
+6. **Check the authenticated API:**
+   ```bash
+   curl http://localhost:8000/api/v1/auth/me \
+     -H "Authorization: Bearer $TOKEN"
+   curl http://localhost:8000/api/v1/dashboard/summary \
+     -H "Authorization: Bearer $TOKEN"
+   ```
+
+7. **Submit telemetry:**
+   ```bash
+   curl -X POST http://localhost:8000/api/v1/alerts/telemetry \
+     -H "Authorization: Bearer $TOKEN" \
+     -H 'Content-Type: application/json' \
+     -d '{"equipment_id":"PUMP-101","temperature":90,"vibration":2,"installation_age_hours":1000,"timestamp":"2026-09-13T12:00:00Z"}'
+   ```
+
+   Telemetry returns `202` after validation and queueing. ML scoring occurs in `celery_worker`, not
+   inside the Uvicorn request handler. Watch the asynchronous path with:
+   ```bash
+   docker compose logs -f web_api celery_worker celery_beat
+   ```
+
+8. **Stop the backend:**
+   ```bash
+   docker compose down
+   ```
+
+8. **Run the Flutter dashboard:**
    ```bash
    cd maintain_nexus_ui
    flutter pub get
@@ -136,7 +194,8 @@ maintain-nexus/
 - **Internal services** use `X-Internal-Service`; `/api/v1/notifications/sms` is never available to end-user roles
 - **Downtime** is persisted as equipment windows opened at dispatch and closed at completion
 - **Live events** are available through the authenticated `/api/v1/events` SSE feed
-- **ML service integration** is intentionally deferred; the live ETL path must not be documented as calling `/api/v1/ml/predict-risk` until that service contract exists
+- **ML risk scoring** is available through the internal `/api/v1/ml/predict-risk` endpoint; live ETL calls it with `X-Internal-Service`
+- **Telemetry ingestion** returns `202` after validation and queueing; the Celery worker performs ML scoring asynchronously
 
 ## API Endpoints
 
@@ -158,6 +217,7 @@ maintain-nexus/
 | GET | `/api/v1/dashboard/executive-summary` | Read executive downtime aggregation |
 | GET | `/api/v1/events` | Authenticated server-sent events stream |
 | POST | `/api/v1/notifications/sms` | Internal-only notification queue boundary |
+| POST | `/api/v1/ml/predict-risk` | Internal-only XGBoost risk scoring contract |
 
 ## Dashboard Summary Endpoint
 

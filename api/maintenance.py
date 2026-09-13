@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from database.auditing import append_audit_log
 from database.db import SessionLocal
@@ -24,7 +24,6 @@ from database.models import AuditLog
 from api.auth import require_internal_or_user
 from etl.ge_validation import validate_telemetry_data
 from etl.metrics import alerts_ingested
-from etl.telemetry import process_raw_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +130,8 @@ async def receive_alert(alert: AlertPayload):
 
 
 class TelemetryPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     equipment_id: str
     temperature: float
     vibration: float
@@ -140,7 +141,7 @@ class TelemetryPayload(BaseModel):
 
 @router.post("/telemetry", status_code=status.HTTP_202_ACCEPTED)
 async def receive_telemetry(telemetry: TelemetryPayload):
-    """Accept raw telemetry and create an alert only when it qualifies."""
+    """Validate and enqueue raw telemetry; Celery performs risk scoring."""
     telemetry_dict = telemetry.model_dump()
     if not validate_telemetry_data(telemetry_dict):
         return JSONResponse(
@@ -151,31 +152,22 @@ async def receive_telemetry(telemetry: TelemetryPayload):
             },
         )
 
-    alert_payload = process_raw_telemetry(telemetry_dict)
-    if alert_payload is None:
-        _write_audit_log("TELEMETRY_ACCEPTED", telemetry_dict)
-        return {
-            "status": "accepted",
-            "alert_created": False,
-            "message": "Telemetry validated but did not exceed alert threshold.",
-        }
-
-    alerts_ingested.inc()
-    alert_payload["received_at"] = datetime.now(timezone.utc).isoformat()
-    _write_audit_log("ALERT_RECEIVED", alert_payload)
+    task_id = str(uuid.uuid4())
+    telemetry_dict["task_id"] = task_id
+    _write_audit_log("TELEMETRY_RECEIVED", telemetry_dict)
 
     try:
-        from tasks import process_alert
+        from tasks import process_telemetry
 
-        process_alert.delay(alert_payload)
-        logger.info("Alert %s enqueued to Celery from telemetry.", alert_payload["task_id"])
+        process_telemetry.delay(telemetry_dict)
+        logger.info("Telemetry %s enqueued to Celery.", task_id)
     except Exception as exc:
-        logger.error("Failed to enqueue alert %s: %s", alert_payload["task_id"], exc)
+        logger.error("Failed to enqueue telemetry %s: %s", task_id, exc)
 
     return {
         "status": "queued",
-        "task_id": alert_payload["task_id"],
-        "data": alert_payload,
+        "task_id": task_id,
+        "data": telemetry_dict,
     }
 
 
