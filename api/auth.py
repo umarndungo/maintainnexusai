@@ -4,18 +4,17 @@ import base64
 import hashlib
 import hmac
 import json
-import os
 import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+from config import AUTH_SECRET, INTERNAL_SERVICE_TOKEN
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 bearer = HTTPBearer(auto_error=False)
-JWT_SECRET = os.getenv("AUTH_SECRET", "change-me-in-production").encode()
-INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "internal-dev-token")
+JWT_SECRET = AUTH_SECRET.encode()
 
 USERS = {
     "tech-demo": {"name": "Demo Technician", "role": "technician", "station_ids": ["STATION-1"]},
