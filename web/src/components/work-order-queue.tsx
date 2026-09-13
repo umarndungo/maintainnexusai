@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { ActionButton } from "./action-button";
 import { WorkOrderDetail } from "./work-order-detail";
 import type { WorkOrder } from "@/lib/api";

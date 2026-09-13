@@ -1,3 +1,11 @@
+> Equipment workflow update: see [EQUIPMENT-MONITORING-FLOW.md](EQUIPMENT-MONITORING-FLOW.md).
+> The telemetry scoring return-contract mismatch is now repaired. Complete canonical
+> streams use historical features; incomplete legacy streams remain unscored.
+> Monitoring/history and assignment/start/completion routes are implemented, with
+> station-scoped equipment/work-order access and committed SSE publication.
+> The previous 43/2 test result below is historical; the expanded backend suite
+> currently passes 48 checks. Legacy audit migration remains a local ingestion blocker.
+
 # Frontend integration status
 
 Reviewed against the team updates merged from `origin/develop` at `88efe6d` on 2026-09-13. This records implementation and handoff gaps; it does not replace the shared API or frozen product contracts.

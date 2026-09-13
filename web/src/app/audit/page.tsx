@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { requireSession } from "@/lib/session";
 import { getAuditLogs, getAuditVerification } from "@/lib/api";
 import { LiveUpdates } from "@/components/live-updates";

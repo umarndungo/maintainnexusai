@@ -1,5 +1,10 @@
 # Frontend Implementation Guide — Next.js Dashboard
 
+Equipment monitoring, ingestion compatibility, validated technician assignment,
+and start/completion integration are described in
+[`EQUIPMENT-MONITORING-FLOW.md`](EQUIPMENT-MONITORING-FLOW.md). It records the
+implemented backend extensions and the preserved legacy-data limitations.
+
 **Owners:** Frontend track owner(s)
 **Replaces:** Flutter Web target only. Flutter stays for mobile — see `08-MOBILE-GUIDE.md`.
 **Reads:** `00-PROJECT-DOC.md` §4 (API contract) and §3 (roles) before starting.
