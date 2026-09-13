@@ -22,12 +22,12 @@ from api.hse import router as hse_router
 from api.auth import router as auth_router
 from api.equipment import router as equipment_router
 from api.maintenance import router as maintenance_router
+from api.ml import router as ml_router
 from api.notifications import router as notifications_router
 from api.auth import get_current_user
 from api.technicians import router as technicians_router
 from api.workorders import router as workorders_router
 
-from database.init_db import init_database
 from etl.metrics import REGISTRY, pipeline_duration, pipeline_results
 
 
@@ -36,8 +36,7 @@ from etl.metrics import REGISTRY, pipeline_duration, pipeline_results
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create DB tables when the server starts."""
-    init_database()
+    """Run the API after the external migration service has prepared the schema."""
     yield
 
 
@@ -112,6 +111,7 @@ app.include_router(events_router)
 app.include_router(hse_router)
 app.include_router(equipment_router)
 app.include_router(maintenance_router)
+app.include_router(ml_router)
 app.include_router(notifications_router)
 app.include_router(technicians_router)
 app.include_router(workorders_router)

@@ -8,11 +8,11 @@ or returns a non-success status code, giving the pipeline clean
 failure-detection semantics.
 """
 
-import os
 import requests
+from config import API_INTERNAL_BASE_URL
 
 # Base URL — configurable so the Celery worker can reach the web_api container.
-BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api/v1")
+BASE_URL = API_INTERNAL_BASE_URL
 
 # Map failure codes to required technician certifications.
 # Extend this mapping as new equipment types are added.

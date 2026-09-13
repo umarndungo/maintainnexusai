@@ -8,6 +8,7 @@ need sample alert traffic without connecting real equipment.
 import random
 import requests
 from faker import Faker
+from config import API_BASE_URL
 
 from api.equipment import EQUIPMENT_IDS, PARTS
 
@@ -31,7 +32,7 @@ for _ in range(10):
     }
 
     response = requests.post(
-        "http://localhost:8000/api/v1/alerts/maintenance",
+        f"{API_BASE_URL}/alerts/maintenance",
         json=payload,
         timeout=5,
     )
