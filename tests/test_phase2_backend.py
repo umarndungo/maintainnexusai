@@ -171,6 +171,7 @@ def test_telemetry_endpoint_enqueues_without_scoring():
 def test_celery_telemetry_task_scores_and_enqueues_alert():
     from tasks import process_telemetry
 
+    score_result = {"risk_score": 0.92, "risk_level": "HIGH"}
     alert = {
         "task_id": "telemetry-1",
         "equipment_id": "EQ-1",
@@ -182,7 +183,7 @@ def test_celery_telemetry_task_scores_and_enqueues_alert():
     with patch("tasks._write_audit_log"), patch(
         "tasks.process_alert.delay"
     ) as enqueue, patch(
-        "etl.telemetry.process_raw_telemetry", return_value=alert
+        "etl.telemetry.score_and_decide", return_value=(score_result, alert)
     ) as score:
         result = process_telemetry.run(telemetry)
 
