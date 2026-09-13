@@ -30,6 +30,22 @@ def _ensure_work_orders_alert_task_id_column():
         )
 
 
+def _ensure_hash_chain_columns():
+    """Add Phase 2 audit columns without mutating existing rows."""
+    tables = inspect(engine).get_table_names()
+    with engine.begin() as conn:
+        for table in ("audit_logs", "work_order_lifecycle_events"):
+            if table not in tables:
+                continue
+            columns = {column["name"] for column in inspect(engine).get_columns(table)}
+            if "event_hash" not in columns:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN event_hash VARCHAR(64)"))
+            if "previous_event_hash" not in columns:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN previous_event_hash VARCHAR(64)"))
+            if "supersedes_event_id" not in columns:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN supersedes_event_id INTEGER"))
+
+
 def init_database():
     """
     Create all tables defined in ``database.models`` if they do not exist.
@@ -40,4 +56,5 @@ def init_database():
     logger.info("Initialising database tables…")
     Base.metadata.create_all(bind=engine)
     _ensure_work_orders_alert_task_id_column()
+    _ensure_hash_chain_columns()
     logger.info("Database tables verified.")

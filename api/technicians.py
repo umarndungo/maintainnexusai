@@ -7,10 +7,15 @@ order. Uses an in-memory roster as a stand-in for a full HR system.
 """
 
 import random
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from api.auth import require_roles
 from typing import Optional
 
-router = APIRouter(prefix="/api/v1/hr/technicians", tags=["HR"])
+router = APIRouter(
+    prefix="/api/v1/hr/technicians",
+    tags=["HR"],
+    dependencies=[Depends(require_roles("technician", "engineer", "executive", "supervisor"))],
+)
 
 _TECHNICIAN_NAMES = [
     "Alice W.",

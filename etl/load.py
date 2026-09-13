@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Base URL — configurable so the Celery worker can reach the web_api container.
 BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api/v1")
+INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "internal-dev-token")
 
 
 def dispatch_work_order(payload: dict):
@@ -43,7 +44,11 @@ def dispatch_work_order(payload: dict):
         on success, or ``None`` if the upstream rejected the request.
     """
     # Post to the API
-    res = requests.post(f"{BASE_URL}/maintenance/work-orders", json=payload)
+    res = requests.post(
+        f"{BASE_URL}/maintenance/work-orders",
+        json=payload,
+        headers={"X-Internal-Service": INTERNAL_SERVICE_TOKEN},
+    )
 
     if res.status_code == 409:
         logger.error(

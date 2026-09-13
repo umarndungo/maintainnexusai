@@ -7,15 +7,23 @@ available on-shift technicians, and current inventory levels.
 
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
+from api.auth import require_roles
 
 from api.equipment import INVENTORY_DB
 from api.technicians import TECHNICIANS
 from database.db import SessionLocal
-from database.models import AuditLog, WorkOrderRecord
+from database.lifecycle import current_work_order_status
+from database.models import AuditLog, DowntimeWindow, WorkOrderRecord
+from api.auth import get_current_user
 
-router = APIRouter(prefix="/api/v1/dashboard", tags=["Dashboard"])
+router = APIRouter(
+    prefix="/api/v1/dashboard",
+    tags=["Dashboard"],
+    dependencies=[Depends(require_roles("technician", "engineer", "executive", "supervisor"))],
+)
 
 
 def _normalize_timestamp(dt: datetime) -> datetime:
@@ -76,10 +84,12 @@ async def get_dashboard_summary():
             .filter(WorkOrderRecord.created_at >= recent_window)
             .all()
         )
-        open_work_orders = (
-            db.query(WorkOrderRecord)
-            .filter(WorkOrderRecord.status != "EXECUTED")
-            .count()
+        current_statuses = {
+            record.id: current_work_order_status(db, record.id)
+            for record in recent_work_orders
+        }
+        open_work_orders = sum(
+            status != "COMPLETED" for status in current_statuses.values()
         )
 
         external_source_alerts = (
@@ -122,9 +132,10 @@ async def get_dashboard_summary():
                 0.0,
                 (datetime.now(timezone.utc) - created_at).total_seconds() / 60.0,
             )
-            if record.status == "DISPATCHED":
+            current_status = current_statuses.get(record.id)
+            if current_status in {"PENDING_APPROVAL", "APPROVED", "DISPATCHED"}:
                 simulated = 25.0
-            elif record.status == "PROCESSING":
+            elif current_status in {"IN_PROGRESS", "PROCESSING"}:
                 simulated = max(20.0, min(age_minutes, 90.0))
             else:
                 simulated = max(30.0, min(age_minutes, 180.0))
@@ -197,5 +208,50 @@ async def get_audit_logs():
             }
             for record in records
         ]
+    finally:
+        db.close()
+
+
+@router.get("/equipment/{equipment_id}/downtime")
+async def equipment_downtime(equipment_id: str):
+    db = SessionLocal()
+    try:
+        windows = db.query(DowntimeWindow).filter(
+            DowntimeWindow.equipment_id == equipment_id
+        ).order_by(DowntimeWindow.started_at.desc()).all()
+        now = datetime.now(timezone.utc)
+        return [{
+            "id": window.id,
+            "work_order_id": window.work_order_id,
+            "started_at": window.started_at.isoformat(),
+            "ended_at": window.ended_at.isoformat() if window.ended_at else None,
+            "duration_seconds": int(((window.ended_at or now) - window.started_at).total_seconds()),
+            "cause_alert_id": window.cause_alert_id,
+        } for window in windows]
+    finally:
+        db.close()
+
+
+@router.get("/executive-summary")
+async def executive_summary(user: Annotated[dict, Depends(get_current_user)]):
+    if user["role"] not in {"executive", "supervisor"}:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Executive or supervisor role required")
+    db = SessionLocal()
+    try:
+        windows = db.query(DowntimeWindow).all()
+        now = datetime.now(timezone.utc)
+        downtime_seconds = sum(
+            ((window.ended_at or now) - window.started_at).total_seconds()
+            for window in windows
+        )
+        completed = sum(window.ended_at is not None for window in windows)
+        return {
+            "downtime_minutes": round(downtime_seconds / 60, 1),
+            "downtime_windows": len(windows),
+            "completed_windows": completed,
+            "open_windows": len(windows) - completed,
+            "uptime_trend": "stable" if downtime_seconds < 1440 * 60 else "at_risk",
+        }
     finally:
         db.close()
