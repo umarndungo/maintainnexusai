@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { getExecutiveSummary } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { LiveUpdates } from "@/components/live-updates";

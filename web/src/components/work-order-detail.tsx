@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import type { LifecycleEvent } from "@/lib/api";
 
 export function WorkOrderDetail({ id }: { id: string }) {
