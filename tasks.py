@@ -22,15 +22,17 @@ import json
 import logging
 import random
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from celery import Celery, signals
 from celery.schedules import crontab
 
 from api.equipment import EQUIPMENT_IDS, PARTS
+from database.auditing import append_audit_log
 from database.db import SessionLocal
 from database.init_db import init_database
-from database.models import Base, WorkOrderRecord, AuditLog
+from database.lifecycle import append_lifecycle_event, current_work_order_status
+from database.models import WorkOrderRecord
 from etl.extract import get_technician, resolve_cert_for_failure
 from etl.telemetry import generate_telemetry, process_raw_telemetry
 from ml.scoring import score_telemetry
@@ -64,6 +66,10 @@ celery_app.conf.beat_schedule = {
         "task": "tasks.scheduled_pipeline_run",
         "schedule": crontab(minute="*/5"),
     },
+    "escalate-stale-approvals": {
+        "task": "tasks.escalate_stale_approvals",
+        "schedule": crontab(minute="*/5"),
+    },
 }
 
 logger = logging.getLogger(__name__)
@@ -86,12 +92,7 @@ def _write_audit_log(event_name: str, payload: dict):
     """Insert an append-only audit entry into PostgreSQL."""
     db = SessionLocal()
     try:
-        record = AuditLog(
-            event_name=event_name,
-            payload=json.dumps(payload),
-            timestamp=datetime.now(timezone.utc),
-        )
-        db.add(record)
+        append_audit_log(db, event_name, payload)
         db.commit()
     except Exception as exc:
         logger.error("Audit log write failed: %s", exc)
@@ -117,7 +118,7 @@ def _find_existing_work_order_by_task_id(task_id: str) -> dict | None:
             "equipment_id": record.equipment_id,
             "assigned_technician_id": record.technician_id,
             "reserved_part": record.part_number,
-            "status": record.status,
+            "status": current_work_order_status(db, record.id),
             "created_at": record.created_at.isoformat(),
             "alert_task_id": record.alert_task_id,
         }
@@ -197,6 +198,37 @@ def process_alert(self, alert: dict):
 # ---------------------------------------------------------------------------
 # Task: periodic pipeline run (Celery Beat)
 # ---------------------------------------------------------------------------
+@celery_app.task
+def escalate_stale_approvals():
+    """Append ESCALATED for approvals that have exceeded the two-hour SLA."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=2)
+    db = SessionLocal()
+    try:
+        records = db.query(WorkOrderRecord).all()
+        escalated = 0
+        for record in records:
+            if record.created_at is None or record.created_at > cutoff:
+                continue
+            if current_work_order_status(db, record.id) != "PENDING_APPROVAL":
+                continue
+            append_lifecycle_event(
+                db,
+                work_order_id=record.id,
+                from_status="PENDING_APPROVAL",
+                to_status="ESCALATED",
+                actor_id="scheduler",
+                actor_role="internal",
+                note="Approval exceeded two-hour SLA",
+            )
+            escalated += 1
+        db.commit()
+        if escalated:
+            _write_audit_log("WORK_ORDERS_ESCALATED", {"count": escalated})
+        return escalated
+    finally:
+        db.close()
+
+
 @celery_app.task
 def scheduled_pipeline_run():
     """

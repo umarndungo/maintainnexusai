@@ -123,7 +123,7 @@ maintain-nexus/
 - **Technician lookup** via `/api/v1/hr/technicians/available`
 - **Inventory checks** via `/api/v1/warehouse/stock`
 - **Work order dispatch** via `/api/v1/maintenance/work-orders`
-- **Work order status** is computed from `created_at` and returns `duration_seconds` for elapsed time
+- **Work order status** is derived exclusively from append-only lifecycle events
 - **Alert/work order correlation** via `alert_task_id`, preserving the originating alert ID on the dispatched work order
 - **Dashboard summary** via `/api/v1/dashboard/summary`
 - **Startup schema migration** automatically adds the `alert_task_id` column for existing PostgreSQL databases on first backend startup
@@ -132,6 +132,10 @@ maintain-nexus/
 - **Duplicate-safe APIs** dedupe work orders and recent alerts before returning lists
 - **Flutter UI** with live counts, technician availability, inventory status, and navigation to recent orders and alerts
 - **Backend refresh behavior** handles eventual consistency for async alert ingestion by polling the summary endpoint after task submission
+- **Phase 2 security** requires signed bearer tokens and server-side role checks on every API router
+- **Internal services** use `X-Internal-Service`; `/api/v1/notifications/sms` is never available to end-user roles
+- **Downtime** is persisted as equipment windows opened at dispatch and closed at completion
+- **Live events** are available through the authenticated `/api/v1/events` SSE feed
 
 ## API Endpoints
 
@@ -178,6 +182,9 @@ The dashboard now includes:
 ## Database Schema
 
 - **work_orders** — Tracks dispatched work orders with equipment, technician, part, status, timestamps, and optional `alert_task_id` linking to the source alert
+- **work_order_lifecycle_events** — Hash-chained, insert-only lifecycle transitions; current status is read from the latest event
+- **downtime_windows** — Equipment downtime intervals linked to work orders
+- **audit_logs** — Hash-chained append-only operational audit events
 - **audit_logs** — Records all pipeline events with event name, payload, and timestamp
 
 ## Work Order Lifecycle
