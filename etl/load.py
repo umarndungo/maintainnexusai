@@ -10,16 +10,15 @@ local PostgreSQL ``work_orders`` table so the system has an authoritative
 record independent of the API's in-memory store.
 """
 
-import os
 import logging
 
 import requests
+from config import API_INTERNAL_BASE_URL, INTERNAL_SERVICE_TOKEN
 
 logger = logging.getLogger(__name__)
 
 # Base URL — configurable so the Celery worker can reach the web_api container.
-BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api/v1")
-INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN", "internal-dev-token")
+BASE_URL = API_INTERNAL_BASE_URL
 
 
 def dispatch_work_order(payload: dict):

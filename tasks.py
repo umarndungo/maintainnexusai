@@ -17,7 +17,6 @@ Integration Contract
 - The beat scheduler runs inside the ``celery_beat`` container.
 """
 
-import os
 import json
 import logging
 import random
@@ -30,17 +29,17 @@ from celery.schedules import crontab
 from api.equipment import EQUIPMENT_IDS, PARTS
 from database.auditing import append_audit_log
 from database.db import SessionLocal
-from database.init_db import init_database
 from database.lifecycle import append_lifecycle_event, current_work_order_status
 from database.models import WorkOrderRecord
 from etl.extract import get_technician, resolve_cert_for_failure
 from etl.telemetry import generate_telemetry, process_raw_telemetry
-from ml.scoring import score_telemetry
+from etl.ml_client import predict_risk
+from config import CELERY_BROKER_URL
 
 # ---------------------------------------------------------------------------
 # Celery app — single point of truth for the whole system
 # ---------------------------------------------------------------------------
-BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+BROKER_URL = CELERY_BROKER_URL
 
 celery_app = Celery("maintainnexus", broker=BROKER_URL, backend=BROKER_URL)
 
@@ -78,13 +77,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Signal: ensure database schema is current when the worker starts
 # ---------------------------------------------------------------------------
-@signals.worker_ready.connect
-def create_tables_on_startup(**kwargs):
-    """Ensure DB tables exist and the current schema is applied when the Celery worker boots."""
-    init_database()
-    logger.info("Database tables verified / created.")
-
-
 # ---------------------------------------------------------------------------
 # Helper: write an AuditLog row
 # ---------------------------------------------------------------------------
@@ -195,6 +187,31 @@ def process_alert(self, alert: dict):
     return None
 
 
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
+def process_telemetry(self, telemetry: dict):
+    """Score validated telemetry in Celery and enqueue qualifying alerts."""
+    from etl.telemetry import process_raw_telemetry
+
+    task_id = telemetry.get("task_id")
+    logger.info("Scoring telemetry %s in Celery.", task_id or "N/A")
+    try:
+        alert_payload = process_raw_telemetry(telemetry)
+    except Exception as exc:
+        logger.exception("Risk scoring failed for telemetry %s", task_id or "N/A")
+        _write_audit_log("RISK_SCORING_FAILED", {"telemetry": telemetry, "error": str(exc)})
+        raise self.retry(exc=exc)
+
+    if alert_payload is None:
+        _write_audit_log("TELEMETRY_ACCEPTED", {"telemetry": telemetry, "alert_created": False})
+        return {"status": "accepted", "alert_created": False, "task_id": task_id}
+
+    alert_payload["task_id"] = task_id or alert_payload["task_id"]
+    alert_payload["received_at"] = datetime.now(timezone.utc).isoformat()
+    _write_audit_log("ALERT_RECEIVED", alert_payload)
+    process_alert.delay(alert_payload)
+    return {"status": "queued", "alert_created": True, "task_id": alert_payload["task_id"]}
+
+
 # ---------------------------------------------------------------------------
 # Task: periodic pipeline run (Celery Beat)
 # ---------------------------------------------------------------------------
@@ -236,31 +253,28 @@ def scheduled_pipeline_run():
     only when predicted failure risk exceeds the configured threshold.
     """
     telemetry = generate_telemetry()
-    risk_probability = score_telemetry(telemetry)
-    health_status = "CRITICAL" if risk_probability > 0.85 else "NORMAL"
-
-    _write_audit_log(
-        "TELEMETRY_CHECK",
-        {
-            "telemetry": telemetry,
-            "risk_probability": risk_probability,
-            "health_status": health_status,
-            "timestamp": telemetry["timestamp"],
-        },
-    )
-
-    _write_audit_log("TELEMETRY_RECEIVED", telemetry)
-
     alert_payload = process_raw_telemetry(telemetry)
     if alert_payload is None:
         logger.info(
             "Telemetry did not meet the alert creation criteria for %s.",
             telemetry["equipment_id"],
         )
-        _write_audit_log("TELEMETRY_REJECTED", {"telemetry": telemetry})
+        _write_audit_log("TELEMETRY_ACCEPTED", {"telemetry": telemetry, "alert_created": False})
         return
 
     logger.info("High-risk telemetry detected, dispatching alert: %s", alert_payload)
+    _write_audit_log(
+        "TELEMETRY_CHECK",
+        {
+            "telemetry": telemetry,
+            "risk_probability": alert_payload["risk_probability"],
+            "risk_level": alert_payload.get("risk_level"),
+            "top_features": alert_payload.get("top_features", []),
+            "health_status": alert_payload.get("risk_level"),
+            "timestamp": telemetry["timestamp"],
+        },
+    )
+    _write_audit_log("TELEMETRY_RECEIVED", telemetry)
     _write_audit_log("ALERT_RECEIVED", alert_payload)
 
     required_cert = resolve_cert_for_failure(alert_payload["failure_code"])
