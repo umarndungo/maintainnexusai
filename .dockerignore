@@ -42,3 +42,8 @@ LICENSE
 
 # Test files (not needed in production image)
 tests/
+
+# Frontend and local development dependencies are built separately.
+.venv/
+**/node_modules/
+**/.next/
