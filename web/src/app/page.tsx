@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 import { siteContent } from "@/content/site";
 
 export default function LandingPage() {

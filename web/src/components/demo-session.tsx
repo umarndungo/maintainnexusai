@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/navigation-link";
 
 // Preserve the legacy entry point while using the shared cookie-based login.
 export function DemoSession() {
