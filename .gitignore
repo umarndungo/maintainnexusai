@@ -100,3 +100,6 @@ yarn-error.log*
 
 # Generated files
 *.lock
+
+# Next.js generated files
+.next/
