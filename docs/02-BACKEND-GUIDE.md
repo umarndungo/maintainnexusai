@@ -10,8 +10,9 @@
 - Persist work-order lifecycle as events (closes the biggest Phase 1 gap).
 - Add RBAC middleware/dependency across all routers.
 - Add the escalation scheduler job.
-- Keep ML scoring as a separate integration boundary. The current backend does not expose or call a
-   model service; adding `/ml/predict-risk` requires a separately agreed model contract.
+- Keep ML scoring behind the internal `/api/v1/ml/predict-risk` integration boundary. The endpoint
+   calls the trained XGBoost artifact, returns the shared risk contract, and requires
+   `X-Internal-Service`. Live ETL calls it through `etl/ml_client.py`; training data remains offline.
 - Add per-equipment downtime tracking and the executive-summary aggregation.
 - Add auth (`/login`, `/me`) issuing JWTs with role + station claims.
 - Add the authenticated live-events endpoint as SSE. The legacy unauthenticated WebSocket route was
@@ -30,8 +31,10 @@
    the application DB role in the same migration.
 4. `PATCH .../approve`, `.../reject`, `.../escalate` — each just appends a lifecycle event and, on
    approve, continues the existing dispatch logic (technician lookup + parts check, already built).
-5. `POST /api/v1/ml/predict-risk` — thin proxy/client to the model service (see Data/ML guide for
-   what it returns). ETL pipeline calls this in place of whatever inline scoring exists now.
+5. `POST /api/v1/ml/predict-risk` — internal-only model adapter returning `risk_score`, `risk_level`,
+   `top_features`, `prediction_horizon_hours`, `model_version`, `prediction_id`, and `timestamp`.
+   The Celery worker calls this endpoint through `etl/ml_client.py`; the FastAPI telemetry handler
+   never makes the scoring request synchronously.
 6. `downtime_windows` table — open a window when a work order enters `DISPATCHED` for equipment
    currently up, close it when lifecycle reaches `COMPLETED`. This is what both the equipment-downtime
    endpoint and the executive summary read from.
@@ -39,7 +42,7 @@
    pure aggregation reads over lifecycle events + downtime windows.
 8. Celery Beat job: scan `PENDING_APPROVAL` work orders older than the SLA window (project doc says
    ~2 hrs) → call the escalate transition automatically.
-9. `GET/WS /api/v1/events` — SSE stream of lifecycle transitions and new alerts, scoped by the
+9. `GET /api/v1/events` — SSE stream of lifecycle transitions and new alerts, scoped by the
    requester's role/stations (don't broadcast everything to everyone).
 10. `POST /api/v1/notifications/sms` — internal only, called by the pipeline on dispatch/escalation;
     see Integrations guide for the actual provider call.
@@ -68,12 +71,13 @@ be right the first time (retrofitting a chain onto existing rows means picking a
 Every endpoint you add is already listed with its consumer in project doc §4. Concretely:
 Next.js hits the auth, work-order action, and dashboard endpoints; Flutter mobile hits work-orders
 and auth; the ETL pipeline uses the internal service header for work-order dispatch. `/notifications/sms`
-is internal-only. ML service integration is intentionally deferred and must not be represented as a
-public or end-user endpoint until its contract exists.
+is internal-only. ML scoring is available only through the internal service boundary and must not be
+exposed to end-user roles.
 
 ## 5. Data flow ownership
 
-You own ingestion, ETL orchestration, storage, and retrieval APIs. You do **not** own the model itself.
+You own ingestion, ETL orchestration, storage, and retrieval APIs. Telemetry ingestion validates and
+queues data quickly; Celery owns the scoring request and subsequent alert processing. You do **not** own the model itself.
 The model call and `top contributing features` contract remain deferred until the ML service owner
 provides a stable request/response specification.
 
