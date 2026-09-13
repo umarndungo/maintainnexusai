@@ -1,12 +1,13 @@
 """Reset the local database and seed unique alerts and work orders."""
 
-import json
 import random
 import uuid
 from datetime import datetime, timezone
 
 from database.db import SessionLocal, engine
-from database.models import Base, AuditLog, WorkOrderRecord
+from database.auditing import append_audit_log
+from database.lifecycle import append_lifecycle_event
+from database.models import Base, WorkOrderRecord
 
 PARTS = [
     "Pump Seal Kit #A4",
@@ -35,12 +36,10 @@ FAILURE_CODES = [
 
 
 def reset_database() -> None:
-    """Empty the current work orders and alert audit log tables."""
+    """Ensure seed tables exist without deleting append-only history."""
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        db.query(AuditLog).delete()
-        db.query(WorkOrderRecord).delete()
         db.commit()
     finally:
         db.close()
@@ -65,13 +64,7 @@ def seed_alerts_and_work_orders(count: int = 5) -> None:
                 "failure_code": failure_code,
             }
 
-            db.add(
-                AuditLog(
-                    event_name="ALERT_RECEIVED",
-                    payload=json.dumps(alert_payload),
-                    timestamp=datetime.now(timezone.utc),
-                )
-            )
+            append_audit_log(db, "ALERT_RECEIVED", alert_payload)
 
             work_order_id = f"WO-{uuid.uuid4().hex[:8].upper()}"
             technician_id = random.choice(TECHNICIANS)
@@ -81,9 +74,17 @@ def seed_alerts_and_work_orders(count: int = 5) -> None:
                     equipment_id=equipment_id,
                     technician_id=technician_id,
                     part_number=part_number,
-                    status="DISPATCHED",
                     created_at=datetime.now(timezone.utc),
                 )
+            )
+            db.flush()
+            append_lifecycle_event(
+                db,
+                work_order_id=work_order_id,
+                to_status="PENDING_APPROVAL",
+                actor_id="seed",
+                actor_role="internal",
+                note="Seeded demo work order",
             )
 
         db.commit()
