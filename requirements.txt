@@ -10,3 +10,5 @@ great_expectations
 pandas
 pytest
 prometheus-client
+xgboost
+scikit-learn

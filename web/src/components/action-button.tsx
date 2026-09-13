@@ -21,10 +21,9 @@ export function ActionButton({ workOrderId, action }: ActionButtonProps) {
   async function handleAction() {
     setState("loading");
     try {
-      const token = window.localStorage.getItem("maintainnexus_token");
-      const response = await fetch(`/api/proxy/maintenance/work-orders/${workOrderId}/${action}`, {
+      const response = await fetch(`/api/proxy/maintenance/work-orders/${encodeURIComponent(workOrderId)}/${action}`, {
         method: "PATCH",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        credentials: "same-origin",
       });
       if (!response.ok) {
         setState("error");

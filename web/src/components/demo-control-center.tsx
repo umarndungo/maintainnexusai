@@ -5,8 +5,8 @@ import { useState } from "react";
 
 type Action = "telemetry" | "overfill" | "work-order";
 const actions: Record<Action, { label: string; detail: string }> = {
-  telemetry: { label: "Send high-risk signal", detail: "Creates a real telemetry alert" },
-  overfill: { label: "Trigger overfill warning", detail: "Runs the HSE safety assessment" },
+  telemetry: { label: "Send high-risk signal", detail: "Submits synthetic sample telemetry to the API" },
+  overfill: { label: "Trigger overfill warning", detail: "Assesses a simulated tank fill; no equipment commands" },
   "work-order": { label: "Create pending order", detail: "Adds an approval-ready work order" },
 };
 
@@ -30,7 +30,8 @@ export function DemoControlCenter() {
     try {
       const response = await fetch(paths[action], { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(bodies[action]) });
       if (!response.ok) throw new Error("The backend rejected this demo action.");
-      setMessage(`${actions[action].label} complete`);
+      const result = await response.json();
+      setMessage(action === "overfill" ? `Simulated assessment: ${result.severity}. ${result.recommended_action}` : action === "work-order" ? `Created ${result.work_order_id}: ${result.status}` : result.alert_created === false ? "Telemetry accepted; no alert created." : "Telemetry accepted for backend processing.");
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Action failed");
@@ -39,5 +40,5 @@ export function DemoControlCenter() {
     }
   }
 
-  return <aside className={`demo-center ${open ? "is-open" : ""}`}><button className="demo-center-toggle" onClick={() => setOpen((value) => !value)} type="button"><span className="demo-live-dot" />Demo control center <b>{open ? "-" : "+"}</b></button>{open && <div className="demo-center-panel"><span className="eyebrow">JUDGE MODE / LIVE ACTIONS</span><h2>Make the story move.</h2><p>Trigger a real backend event, then watch the dashboard respond.</p>{(Object.keys(actions) as Action[]).map((action) => <button className="demo-action" disabled={busy !== null} key={action} onClick={() => run(action)} type="button"><span><strong>{busy === action ? "Working..." : actions[action].label}</strong><small>{actions[action].detail}</small></span><b>-&gt;</b></button>)}{message && <div className="demo-result">{message}</div>}</div>}</aside>;
+  return <aside className={`demo-center ${open ? "is-open" : ""}`}><button className="demo-center-toggle" onClick={() => setOpen((value) => !value)} type="button"><span className="demo-live-dot" />Demo control center <b>{open ? "-" : "+"}</b></button>{open && <div className="demo-center-panel"><span className="eyebrow">JUDGE MODE / LIVE ACTIONS</span><h2>Make the story move.</h2><p>Submit sample data to the backend. Tank assessments are simulated and do not control equipment.</p>{(Object.keys(actions) as Action[]).map((action) => <button className="demo-action" disabled={busy !== null} key={action} onClick={() => run(action)} type="button"><span><strong>{busy === action ? "Working..." : actions[action].label}</strong><small>{actions[action].detail}</small></span><b>-&gt;</b></button>)}{message && <div className="demo-result">{message}</div>}</div>}</aside>;
 }

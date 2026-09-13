@@ -26,7 +26,9 @@ def publish_event(event: dict) -> None:
 @router.get("")
 async def events(request: Request, user: Annotated[dict, Depends(get_current_user)]):
     queue: asyncio.Queue = asyncio.Queue()
-    keys = {"*", *user.get("station_ids", [])}
+    # Cross-station roles may subscribe globally. Station users must never
+    # receive another station's events or events with unknown ownership.
+    keys = {"*"} if user["role"] in {"executive", "supervisor"} else set(user.get("station_ids", []))
     for key in keys:
         _subscribers[key].add(queue)
 
