@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MaintainNexus Prediction Response",
+  "type": "object",
+  "required": [
+    "equipment_id",
+    "equipment_type",
+    "risk_score",
+    "risk_level",
+    "prediction_horizon_hours",
+    "top_features",
+    "model_version",
+    "prediction_id",
+    "timestamp"
+  ],
+  "properties": {
+    "equipment_id": {
+      "type": "string"
+    },
+    "equipment_type": {
+      "enum": [
+        "PUMP",
+        "LOADING_ARM",
+        "VALVE"
+      ]
+    },
+    "risk_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "risk_level": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    "prediction_horizon_hours": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "top_features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "model_version": {
+      "type": "string"
+    },
+    "prediction_id": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
