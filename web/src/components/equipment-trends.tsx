@@ -23,10 +23,12 @@ function Trend({ title, unit, points, threshold }: { title: string; unit: string
 export function EquipmentTrends({ readings }: { readings: EquipmentReading[] }) {
   const latest = readings[readings.length - 1];
   const riskPoints = readings.filter(r => r.prediction).map(r => ({ time: Date.parse(String(r.telemetry.timestamp ?? r.received_at)), value: r.prediction!.failure_probability * 100 }));
-  return <section className="panel monitoring-panel"><div className="panel-header"><h3>Sensor history</h3><span>{readings.length} recorded readings · timestamp axis</span></div><p className="monitoring-context">These are persisted readings, updated by live events. Sensor failure limits are not exposed by this API; the model evaluates overall failure probability.</p><div className="trend-grid">{metrics.map(metric => {
+  const riskThresholds = new Set(readings.flatMap(r => r.prediction ? [r.prediction.threshold] : []));
+  const riskThreshold = riskThresholds.size === 1 ? [...riskThresholds][0] * 100 : undefined;
+  return <section className="panel monitoring-panel"><div className="panel-header"><h3>Sensor history</h3><span>{readings.length} recorded readings · timestamp axis</span></div><p className="monitoring-context">These are persisted readings, updated by live events. Sensor failure limits are not exposed by this API; the model evaluates overall failure probability.</p>{latest && !latest.prediction && riskPoints.length > 0 && <p className="notice">The latest reading is unscored. The risk chart ends at the most recent evaluated reading.</p>}{riskThresholds.size > 1 && <p className="notice">Historical evaluations used different failure thresholds; a single threshold line is not shown.</p>}<p className="monitoring-context">Lines connect available samples. Missing sensor values and model evaluations are not estimated.</p><div className="trend-grid">{metrics.map(metric => {
     const canonical = readings.some(r => typeof r.telemetry[metric.key] === "number");
     const key = canonical ? metric.key : metric.legacy ?? metric.key;
     const points = readings.filter(r => typeof r.telemetry[key] === "number").map(r => ({ time: Date.parse(String(r.telemetry.timestamp ?? r.received_at)), value: Number(r.telemetry[key]) }));
     return <Trend key={metric.key} title={metric.label} unit={canonical ? metric.unit : "(reported units)"} points={points} />;
-  })}<Trend title="Failure probability" unit="%" points={riskPoints} threshold={latest?.prediction ? latest.prediction.threshold * 100 : undefined} /></div></section>;
+  })}<Trend title="Failure probability" unit="%" points={riskPoints} threshold={riskThreshold} /></div></section>;
 }
