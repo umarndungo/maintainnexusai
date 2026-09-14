@@ -1,8 +1,8 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser, type UserRole } from "./api";
+import { apiOrigin, getCurrentUser, type UserRole } from "./api";
 
-export const apiBaseUrl = () => (process.env.API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
+export const apiBaseUrl = apiOrigin;
 
 export async function authorize(request: NextRequest, roles: UserRole[]) {
   const token = request.cookies.get("maintainnexus_token")?.value;

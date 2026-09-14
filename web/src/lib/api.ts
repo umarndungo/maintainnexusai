@@ -1,20 +1,22 @@
-const apiBaseUrl = (process.env.API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
+// Backend configuration may use the versioned root; web paths include /api/v1.
+export const apiOrigin = () => (process.env.API_BASE_URL ?? "http://localhost:8000").replace(/\/api\/v1\/?$/, "").replace(/\/$/, "");
 
 export type ApiResult<T> = {
   data: T | null;
   available: boolean;
   status?: number;
+  error?: string;
 };
 
 export type UserRole = "engineer" | "supervisor" | "executive" | "technician";
 export type CurrentUser = { id: string; name?: string; role: UserRole; station_ids: string[] };
-export type Prediction = { failure_probability: number; failure_predicted: boolean; risk_level: string; threshold: number; prediction_horizon_hours: number };
-export type Thresholds = { failure_probability: number; warning_probability: number | null; prediction_horizon_hours: number; source: string; sensor_limits: null };
+export type Prediction = { failure_probability: number; failure_predicted: boolean; risk_level: string; threshold: number; prediction_horizon_hours: number; target?: string; model_version?: string; prediction_id?: string; timestamp?: string; top_features?: string[] };
+export type Thresholds = { failure_probability: number; warning_probability: number | null; prediction_horizon_hours: number; source: string; target?: string; sensor_limits: null };
 export type EquipmentReading = { id: number; equipment_id: string; station_id?: string; telemetry: Record<string, string | number | null>; prediction: Prediction | null; state: string; evaluation_reason?: string; received_at: string };
 export type Monitoring = { equipment: EquipmentReading[]; thresholds: Thresholds; source: string };
 export type Technician = { id: string; name: string; certs: string[]; on_shift: boolean; active_work_orders: number };
-export type RecentAlert = { task_id?: string; equipment_id: string; part_number?: string; severity?: string; failure_code?: string; received_at?: string; required_cert?: string; telemetry?: Record<string, string | number | null>; prediction?: Prediction; threshold?: number; risk_probability?: number; pipeline?: { status: string; reason?: string } };
-export type LifecycleEvent = { id: number; from_status?: string; to_status: string; actor_id: string; actor_role: string; note?: string; timestamp: string; risk_drivers?: WorkOrder["risk_drivers"]; top_features?: string[] };
+export type RecentAlert = { task_id?: string; equipment_id: string; station_id?: string; part_number?: string; severity?: string; failure_code?: string; received_at?: string; required_cert?: string; telemetry?: Record<string, string | number | null>; prediction?: Prediction | null; model_version?: string; triggered_by_model?: boolean; threshold?: number; risk_probability?: number; pipeline?: { status: string; reason?: string } };
+export type LifecycleEvent = { id: number; from_status?: string; to_status: string; actor_id: string; actor_role: string; note?: string; timestamp: string; event_hash?: string; previous_event_hash?: string };
 
 export type DashboardSummary = {
   available_technicians?: Array<{ id: string; name: string; certs?: string[] }>;
@@ -81,19 +83,21 @@ export type HseOverview = {
 
 async function request<T>(path: string, token?: string): Promise<ApiResult<T>> {
   try {
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const response = await fetch(`${apiOrigin()}${path}`, {
       headers: { Accept: "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       cache: "no-store",
       signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
-      return { data: null, available: false, status: response.status };
+      const body = await response.json().catch(() => null);
+      const detail = body?.detail;
+      return { data: null, available: false, status: response.status, error: typeof detail === "string" ? detail : undefined };
     }
 
     return { data: (await response.json()) as T, available: true, status: response.status };
   } catch {
-    return { data: null, available: false };
+    return { data: null, available: false, error: "The API could not be reached or did not return a readable response." };
   }
 }
 
@@ -119,8 +123,12 @@ export function getDowntime(equipmentId: string, token: string) {
   return request<Array<{ id: number; work_order_id?: string; started_at: string; ended_at?: string; duration_seconds?: number; estimated_cost?: number }>>(`/api/v1/dashboard/equipment/${encodeURIComponent(equipmentId)}/downtime`, token);
 }
 
-export function getAuditVerification(token: string) {
-  return request<{ chain_integrity: boolean; checked_events: number; chain: string; verified_at: string }>("/api/v1/dashboard/audit-logs/verify", token);
+export async function getAuditVerification(token: string) {
+  const result = await request<{ chain_integrity: boolean; checked_events: number; chain: string; verified_at: string }>("/api/v1/dashboard/audit-logs/verify", token);
+  if (result.available && (!result.data || typeof result.data.chain_integrity !== "boolean" || !Number.isInteger(result.data.checked_events) || result.data.checked_events < 0 || !Number.isFinite(Date.parse(result.data.verified_at)))) {
+    return { data: null, available: false, status: 502, error: "The backend did not supply a complete audit verification result." };
+  }
+  return result;
 }
 
 export async function getCurrentUser(token: string): Promise<ApiResult<CurrentUser>> {
