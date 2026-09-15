@@ -1,6 +1,9 @@
 # MaintainNexus - Predictive Maintenance & Work Order Dispatch Infrastructure
 
-> Phase 2 web dashboard: use `web/` (Next.js). Flutter remains the mobile target. The Flutter web/static-hosting sections below describe the legacy target; use `docs/04-DEPLOYMENT-GUIDE.md` for current web deployment. Never replace the team guides in `docs/` with web build output.
+> Phase 2 web dashboard: use `web/` (Next.js). The mobile target is `technician-mobile-app/`
+> (Flutter) — `maintain_nexus_ui/`, the older Flutter dashboard, is disabled and renamed to
+> `_disabled_maintain_nexus_ui/`. Use `docs/04-DEPLOYMENT-GUIDE.md` for current web deployment.
+> Never replace the team guides in `docs/` with web build output.
 
 ## Run the current Next.js dashboard
 
@@ -24,7 +27,7 @@ maintain-nexus/
 ├── api/             # Mock FastAPI service suite (Inventory, Alerts, HR, Work Orders, Dashboard)
 ├── etl/             # Data pipeline: extraction, validation, transformation, loading
 ├── database/        # PostgreSQL persistence with SQLAlchemy ORM and audit logging
-├── maintain_nexus_ui/ # Flutter dashboard application
+├── _disabled_maintain_nexus_ui/ # Old Flutter dashboard, disabled — see technician-mobile-app/
 ├── tests/           # Pytest integration and unit tests
 └── .github/         # CI/CD automation via GitHub Actions
 ```
@@ -142,70 +145,26 @@ maintain-nexus/
    This job is idempotent. It does not delete historical rows or drop the legacy
    `work_orders.status` column.
 
-9. **Run the Flutter dashboard:**
+9. **Run the mobile app** (`technician-mobile-app/` — see its README for details):
    ```bash
-   cd maintain_nexus_ui
+   cd technician-mobile-app
    flutter pub get
    flutter run
    ```
+
 ## Run the app
 
-### Option A: Run locally with Docker Compose
+Backend + web dashboard:
+```bash
+make up
+```
+API docs at `http://localhost:8000/docs`, web dashboard at `http://localhost:3000` (see "Run the
+current Next.js dashboard" above).
 
-1. Start the backend and required services:
-   ```bash
-   make up
-   ```
-2. Confirm the API is available at:
-   - `http://localhost:8000/docs`
-3. In a second terminal, run the Flutter UI from the project root:
-   ```bash
-   cd maintain_nexus_ui
-   flutter pub get
-   flutter run
-   ```
-4. Open the Flutter app on the device/emulator shown by `flutter run`.
-
-### Option B: Run the Flutter app directly
-
-1. From the Flutter app directory:
-   ```bash
-   cd maintain_nexus_ui
-   flutter pub get
-   flutter run
-   ```
-2. The app assumes the backend API is available at `http://localhost:8000/api/v1` by default.
-
-### Run the Flutter app on web
-
-1. Build for web:
-   ```bash
-   cd maintain_nexus_ui
-   flutter build web --release
-   ```
-2. Serve locally for testing:
-   ```bash
-   cd maintain_nexus_ui/build/web
-   python3 -m http.server 8080
-   ```
-3. Open `http://localhost:8080` in your browser.
-
-### Run the Flutter app on desktop
-
-1. Ensure desktop support is enabled:
-   ```bash
-   flutter config --enable-linux-desktop
-   flutter config --enable-macos-desktop
-   flutter config --enable-windows-desktop
-   flutter doctor
-   ```
-2. Run on the desktop target:
-   ```bash
-   cd maintain_nexus_ui
-   flutter run -d linux
-   ```
-
-> Replace `linux` with `macos` or `windows` as needed.
+**`maintain_nexus_ui/` (the old Flutter dashboard) is disabled** — renamed to
+`_disabled_maintain_nexus_ui/`, no longer part of the standard run/build/deploy workflow. The
+maintained mobile client is `technician-mobile-app/` (see `technician-mobile-app/README.md` for
+`flutter run`/`flutter build` instructions there instead).
 
 ## Feature Summary
 
@@ -264,13 +223,8 @@ The Flutter dashboard consumes this endpoint to keep the UI in sync with backend
 
 ## Flutter Dashboard UI
 
-The dashboard now includes:
-
-- top-level system status and refresh indicator
-- quick actions for sample work order dispatch and sample alert submission
-- available technician list and current inventory status cards
-- navigation cards for recent work orders and recent alerts
-- a scrollable layout with pull-to-refresh support
+`_disabled_maintain_nexus_ui/` (the old Flutter dashboard this section described) is disabled. The
+web dashboard is `web/` (Next.js); the maintained mobile client is `technician-mobile-app/`.
 
 ## ETL Pipeline Flow
 
@@ -359,105 +313,12 @@ published to the host) before running `pytest`.
 - **Docker Compose** — Container orchestration
 - **Flutter** — Dashboard UI
 
-## Deploying the Flutter Dashboard
+## Deploying
 
-This project includes a web-ready Flutter dashboard at `maintain_nexus_ui/`.
+`maintain_nexus_ui/` (the old Flutter web dashboard this section covered — Netlify/GitHub Pages
+static hosting) is disabled; that guidance no longer applies. Current deployment docs:
 
-### Build the web app
-
-```bash
-cd maintain_nexus_ui
-flutter pub get
-flutter build web --release
-```
-
-The built static files will be available in `maintain_nexus_ui/build/web/`.
-
-### Deploy to Netlify
-
-1. Build the app as shown above.
-2. In the Netlify dashboard, drag and drop the `maintain_nexus_ui/build/web/` folder.
-3. Or use the Netlify CLI:
-
-```bash
-npm install -g netlify-cli
-cd maintain_nexus_ui
-netlify deploy --dir=build/web
-netlify deploy --dir=build/web --prod
-```
-
-> If your dashboard uses client-side routing later, add a `_redirects` file in `build/web/` with:
->
-> ```text
-> /* /index.html 200
-> ```
-
-### Deploy to GitHub Pages
-
-#### Option A: Use the `docs/` folder
-
-```bash
-cd maintain_nexus_ui
-flutter build web --release
-mkdir -p ../legacy-web-site
-cp -r build/web/* ../legacy-web-site/
-cd ..
-git add legacy-web-site
-git commit -m "Deploy Flutter web dashboard to GitHub Pages"
-git push
-```
-
-Then enable GitHub Pages in repository settings:
-- Source: `main` branch
-- Folder: use a separate publishing branch or hosting provider; keep `/docs` for team guides.
-
-#### Option B: Use `gh-pages` branch
-
-1. Build the app:
-
-```bash
-cd maintain_nexus_ui
-flutter build web --release
-```
-
-2. Push the contents of `build/web/` to a `gh-pages` branch using a deploy script or GitHub Action.
-3. Enable GitHub Pages from the `gh-pages` branch.
-
-### Important note
-
-The hosted frontend is static only. The backend must remain available independently, so update the dashboard API base URL to point to the hosted FastAPI backend rather than `localhost`.
-
-### Backend hosting guidance
-
-The backend should be deployed as a separate service, such as:
-
-- **Railway**, **Render**, **Fly.io**, or **Heroku** for the FastAPI app
-- **Docker Compose** locally for development
-- **PostgreSQL** and **Redis** must also be hosted or managed for production
-
-Common backend hosting setup:
-
-1. Deploy the FastAPI app and expose the API at a public base URL.
-2. Ensure the Celery worker is running with access to Redis.
-3. Point the Flutter web app configuration at the public API URL.
-
-If the backend is served at `https://api.example.com`, the frontend should use that URL for all API calls.
-
-### Example frontend configuration
-
-The Flutter app reads its backend base URL from a compile-time environment variable.
-
-Build the web app with a hosted backend URL like this:
-
-```bash
-cd maintain_nexus_ui
-flutter build web --release --dart-define=API_BASE_URL=https://api.example.com/api/v1
-```
-
-For local development, the app still defaults to:
-
-```dart
-http://localhost:8000/api/v1
-```
-
-If the backend is deployed to a different hostname or path, change `API_BASE_URL` accordingly.
+- **Backend** (FastAPI + Celery worker + Celery Beat): `render.yaml` at the repo root, or see
+  `docs/04-DEPLOYMENT-GUIDE.md`.
+- **Web dashboard** (`web/`, Next.js): `web/README.md`.
+- **Mobile** (`technician-mobile-app/`, Flutter): `technician-mobile-app/README.md`.
