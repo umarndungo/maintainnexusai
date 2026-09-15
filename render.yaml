@@ -1,0 +1,141 @@
+# Render Blueprint — Build Plan Phase 1 step 3.
+#
+# Deploys the backend (FastAPI + Celery worker + Celery Beat) as three
+# services sharing one Docker image (the existing root Dockerfile).
+# Celery Beat is a *worker*, not a Render cron job — cron jobs run a
+# command to completion on a schedule and exit; Beat is a persistent
+# scheduler process, same as docker-compose.yml already treats it.
+#
+# Postgres (Supabase) and Redis (Build Plan Phase 1 step 1) are NOT
+# defined here as Render-managed resources — DATABASE_URL and
+# CELERY_BROKER_URL/REDIS_URL are set as plain env vars pointing at
+# your Supabase Postgres connection string and a Redis instance
+# (Render's own Key Value service works fine here too; add one from
+# the dashboard and reference its internal URL). Set every `sync:
+# false` value in the Render dashboard once — never commit real
+# secrets to this file (04-DEPLOYMENT-GUIDE.md's rule, same as
+# everywhere else).
+#
+# Deploy: push this repo, then in the Render dashboard use
+# "New > Blueprint" and point it at this file.
+
+services:
+  - type: web
+    name: maintainnexus-web-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    envVars:
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_CONTAINER_PORT
+        value: 8000
+      - key: DATABASE_URL
+        sync: false # Supabase Postgres connection string (Phase 1 step 1)
+      - key: REDIS_URL
+        sync: false # Redis/Key Value instance URL (broker for Celery)
+      - key: CELERY_BROKER_URL
+        sync: false # same value as REDIS_URL unless you split them
+      - key: AUTH_SECRET
+        sync: false
+      - key: INTERNAL_SERVICE_TOKEN
+        sync: false
+      - key: API_BASE_URL
+        sync: false # this service's own public Render URL + /api/v1
+      - key: API_INTERNAL_BASE_URL
+        sync: false # same, used by Celery to call back into this service
+      - key: AFRICASTALKING_USERNAME
+        sync: false
+      - key: AFRICASTALKING_API_KEY
+        sync: false
+      - key: AFRICASTALKING_SENDER_ID
+        sync: false
+      - key: AFRICASTALKING_INBOUND_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_PHOTOS_BUCKET
+        value: work-order-photos
+      - key: FIREBASE_SERVICE_ACCOUNT_FILE
+        sync: false # leave unset until Firebase is set up — push stays inert
+
+  - type: worker
+    name: maintainnexus-celery-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: celery -A tasks.celery_app worker --loglevel=info --concurrency=2
+    plan: starter
+    envVars:
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: DATABASE_URL
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: REDIS_URL
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: CELERY_BROKER_URL
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: INTERNAL_SERVICE_TOKEN
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: API_INTERNAL_BASE_URL
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: AFRICASTALKING_USERNAME
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: AFRICASTALKING_API_KEY
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: AFRICASTALKING_SENDER_ID
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: SUPABASE_URL
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: SUPABASE_SERVICE_ROLE_KEY
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: FIREBASE_SERVICE_ACCOUNT_FILE
+
+  - type: worker
+    name: maintainnexus-celery-beat
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: celery -A tasks.celery_app beat --loglevel=info --scheduler celery.beat.Scheduler
+    plan: starter
+    envVars:
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: DATABASE_URL
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: REDIS_URL
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: CELERY_BROKER_URL
+      - fromService:
+          type: web
+          name: maintainnexus-web-api
+          envVarKey: API_INTERNAL_BASE_URL

@@ -53,6 +53,12 @@ dependencies:
   # app restarts — a plain key-value store, so it works fully offline.
   shared_preferences: ^2.3.3
 
+  # SMS deep link (Build Plan Phase 2 step 5): catches
+  # maintainnexus://work-orders/{id} taps, cold-start or warm-start, and
+  # hands the URI to lib/services/deep_link_service.dart. Pure-Dart +
+  # platform channels — no Firebase project needed, unlike push.
+  app_links: ^6.4.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

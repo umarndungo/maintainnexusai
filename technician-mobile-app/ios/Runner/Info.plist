@@ -26,6 +26,20 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- SMS deep link (Build Plan Phase 2 step 5) — see AndroidManifest.xml
+	     for the matching Android intent-filter and
+	     lib/services/deep_link_service.dart for the handler. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.maintainnexus.technician_mobile_app.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>maintainnexus</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

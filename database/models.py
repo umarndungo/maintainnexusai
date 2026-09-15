@@ -45,6 +45,11 @@ class WorkOrderRecord(Base):
     alert_task_id = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
 
+    # Close-out fields (populated by PATCH .../complete) — see api/workorders.py.
+    completion_notes = Column(Text, nullable=True)
+    parts_used = Column(String, nullable=True)
+    photo_object_path = Column(String, nullable=True)
+
 
 class WorkOrderLifecycleEvent(Base):
     """Immutable, hash-chained transition in a work-order lifecycle."""
@@ -109,3 +114,65 @@ class DowntimeWindow(Base):
     started_at = Column(DateTime(timezone=True), nullable=False)
     ended_at = Column(DateTime(timezone=True), nullable=True)
     cause_alert_id = Column(String, nullable=True)
+
+
+class TechnicianDevice(Base):
+    """The most recent FCM push token registered for a technician.
+
+    One row per technician — a fresh sign-in on a new device just
+    overwrites the previous token. The HR technician roster itself is
+    still an in-memory stand-in (see api/technicians.py); this table is
+    the one piece of technician-related state that genuinely needs to
+    survive a restart, so it's real Postgres rather than in-memory.
+    """
+
+    __tablename__ = "technician_devices"
+
+    technician_id = Column(String, primary_key=True)
+    device_token = Column(String, nullable=False)
+    platform = Column(String, nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class SmsLog(Base):
+    """Append-only record of every outbound SMS send attempt.
+
+    Kept even when Africa's Talking credentials are absent (status
+    ``SKIPPED_NO_CREDENTIALS``) so the dispatch flow's notification
+    behavior is visible in the same place whether or not a real
+    provider is wired up yet.
+    """
+
+    __tablename__ = "sms_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    work_order_id = Column(String, nullable=True)
+    recipient = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    status = Column(String, nullable=False)
+    provider_message_id = Column(String, nullable=True)
+    error = Column(Text, nullable=True)
+    sent_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
+
+
+class PendingSmsPrompt(Base):
+    """An outstanding 'reply 1/3 to accept/complete' prompt sent to a
+    non-smartphone technician (spec Phase 3). Matched on phone number +
+    the exact code echoed back, not "most recent open prompt" — a
+    technician can have more than one job in flight.
+    """
+
+    __tablename__ = "pending_sms_prompts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    phone_number = Column(String, nullable=False)
+    work_order_id = Column(String, ForeignKey("work_orders.id"), nullable=False)
+    expected_codes = Column(String, nullable=False)  # comma-separated, e.g. "1,3"
+    code_to_status = Column(String, nullable=False)  # JSON: {"1": "IN_PROGRESS", "3": "COMPLETED"}
+    sent_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_pending_sms_prompt_phone", "phone_number", "resolved_at"),
+    )
