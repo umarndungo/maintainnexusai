@@ -120,7 +120,11 @@ export function getLifecycle(workOrderId: string, token: string) {
 }
 
 export function getDowntime(equipmentId: string, token: string) {
-  return request<Array<{ id: number; work_order_id?: string; started_at: string; ended_at?: string; duration_seconds?: number; estimated_cost?: number }>>(`/api/v1/dashboard/equipment/${encodeURIComponent(equipmentId)}/downtime`, token);
+  return request<Array<{ id: number; work_order_id?: string; started_at: string; ended_at?: string | null; duration_seconds?: number; estimated_cost?: number; cause_alert_id?: string | null }>>(`/api/v1/dashboard/equipment/${encodeURIComponent(equipmentId)}/downtime`, token);
+}
+
+export function getReportSources(token: string) {
+  return Promise.all([getExecutiveSummary(token), getMonitoring(token), request<WorkOrder[]>("/api/v1/maintenance/work-orders", token), request<RecentAlert[]>("/api/v1/alerts/recent", token)]);
 }
 
 export async function getAuditVerification(token: string) {

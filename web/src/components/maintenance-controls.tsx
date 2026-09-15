@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { ConfirmDialog } from "./confirm-dialog";
 import { useRouter } from "next/navigation";
 import type { RecentAlert, Technician, WorkOrder } from "@/lib/api";
 
@@ -20,7 +21,8 @@ function useMaintenanceOperation() {
   const [pending, transition] = useTransition();
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  async function run(path: string, method: string, body?: object) {
+  const [confirmation, setConfirmation] = useState<{ path: string; method: string; body?: object } | null>(null);
+  async function execute(path: string, method: string, body?: object) {
     setBusy(true); setError(""); setMessage("");
     try {
       const result = await submitOperation(path, method, body);
@@ -29,11 +31,14 @@ function useMaintenanceOperation() {
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Service unavailable. Try again."); }
     finally { setBusy(false); }
   }
-  return { run, busy: busy || pending, message, error };
+  async function run(path: string, method: string, body?: object) { setConfirmation({ path, method, body }); }
+  const action = confirmation?.path.split("/").at(-1) ?? "";
+  const descriptions: Record<string, string> = { approve: "Approve this work order and dispatch it to the assigned technician.", reject: "Record a rejection. This does not clear equipment alerts or failure conditions.", escalate: "Escalate this pending order for supervisor review.", assign: "Change the assigned maintenance technician for this work order.", start: "Record that maintenance has started on this equipment.", complete: "Complete maintenance and close its recorded downtime window. Sensor readings will remain unchanged." };
+  return { run, busy: busy || pending, message, error, confirmation: confirmation ? <ConfirmDialog title="Confirm maintenance action" description={descriptions[action] ?? "Create a work order from this alert and assign the selected technician."} onClose={() => setConfirmation(null)} onConfirm={() => execute(confirmation.path, confirmation.method, confirmation.body)} /> : null };
 }
 
-function Feedback({ message, error }: { message: string; error: string }) {
-  return <>{message && <p className="operation-success" role="status">{message}</p>}{error && <p className="operation-error" role="alert">{error}</p>}</>;
+function Feedback({ message, error, confirmation }: { message: string; error: string; confirmation?: ReactNode }) {
+  return <>{confirmation}{message && <p className="operation-success" role="status">{message}</p>}{error && <p className="operation-error" role="alert">{error}</p>}</>;
 }
 
 function TechnicianSelect({ technicians, cert, current }: { technicians: Technician[]; cert?: string; current?: string }) {
