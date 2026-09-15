@@ -1,0 +1,8 @@
+source_id,category,status,ml_role,notes
+uci_ai4i_2020,EXTERNAL_PUBLIC,DOWNLOAD_SCRIPT_READY,baseline_failure_classification,"Synthetic industrial benchmark; not KPC telemetry"
+uci_hydraulic_447,EXTERNAL_PUBLIC,DOWNLOAD_SCRIPT_READY,pump_valve_condition_monitoring,"Strongest public match for pump/valve sensor signals"
+cwru_bearing,EXTERNAL_PUBLIC,MANUAL_DOWNLOAD,pump_vibration_features,"Official bearing vibration data; MATLAB files"
+kpc_annual_reports,KPC_PUBLIC,MANUAL_DOWNLOAD,context_only,"Reports provide documented context, not raw telemetry"
+pump_loading_arm_valve_telemetry,INTERNAL_OR_SYNTHETIC,NOT_PUBLIC,sensor_training,"Requires authorized operational access; prototype uses synthetic data"
+truck_schedule,INTERNAL_OR_SYNTHETIC,NOT_PUBLIC,automation_decision,"Prototype uses synthetic operational data"
+loading_point_availability,INTERNAL_OR_SYNTHETIC,NOT_PUBLIC,automation_decision,"Prototype uses synthetic operational data"
