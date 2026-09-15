@@ -10,6 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from api.auth import require_internal_service
+<<<<<<< HEAD
+=======
+from ml.explainability import explain_prediction
+>>>>>>> 71e2efe2d68cd43dd44afd7755372df259c9948e
 from ml.scoring import METADATA, score_telemetry
 
 router = APIRouter(
@@ -35,6 +39,41 @@ class RiskRequest(BaseModel):
     equipment_type: str | None = Field(default=None, pattern="^(PUMP|LOADING_ARM|VALVE)$")
 
 
+<<<<<<< HEAD
+=======
+class FailureMode(BaseModel):
+    """A single possible failure mode identified by the rules engine."""
+    name: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence: list[str]
+
+
+class ExplainabilityPayload(BaseModel):
+    """Per-prediction explainability fields added to the risk response."""
+    anomaly_score: float = Field(ge=0.0, le=1.0)
+    likely_failure_modes: list[FailureMode]
+    recommended_inspection: list[str]
+    requires_technician_review: bool
+
+
+class RiskResponse(BaseModel):
+    """Full response from the predict-risk endpoint."""
+    equipment_id: str
+    equipment_type: str
+    risk_score: float
+    risk_level: str
+    prediction_horizon_hours: int
+    top_features: list[str]
+    model_version: str
+    prediction_id: str
+    timestamp: str
+    anomaly_score: float
+    likely_failure_modes: list[FailureMode]
+    recommended_inspection: list[str]
+    requires_technician_review: bool
+
+
+>>>>>>> 71e2efe2d68cd43dd44afd7755372df259c9948e
 def _top_features() -> list[str]:
     try:
         with FEATURE_IMPORTANCE_FILE.open(newline="", encoding="utf-8") as file:
@@ -58,6 +97,10 @@ def _validate_categorical(telemetry: dict[str, Any], field: str) -> None:
 
 @router.post(
     "/predict-risk",
+<<<<<<< HEAD
+=======
+    response_model=RiskResponse,
+>>>>>>> 71e2efe2d68cd43dd44afd7755372df259c9948e
     status_code=status.HTTP_200_OK,
     responses={422: {"description": "Missing equipment type or an unrecognised/incomplete feature set"}},
 )
@@ -80,6 +123,7 @@ async def predict_risk(request: RiskRequest):
 
     risk_score = float(result["failure_probability"])
     risk_level = "CRITICAL" if risk_score >= 0.85 else result["risk_level"]
+<<<<<<< HEAD
     return {
         "equipment_id": request.equipment_id,
         "equipment_type": equipment_type,
@@ -91,3 +135,23 @@ async def predict_risk(request: RiskRequest):
         "prediction_id": str(uuid.uuid4()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+=======
+
+    explanation = explain_prediction(telemetry, equipment_type, risk_score)
+
+    return RiskResponse(
+        equipment_id=request.equipment_id,
+        equipment_type=equipment_type,
+        risk_score=risk_score,
+        risk_level=risk_level,
+        prediction_horizon_hours=result.get("prediction_horizon_hours", 6),
+        top_features=_top_features(),
+        model_version=f"xgboost-{METADATA.get('xgboost_version', 'unknown')}",
+        prediction_id=str(uuid.uuid4()),
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        anomaly_score=explanation["anomaly_score"],
+        likely_failure_modes=explanation["likely_failure_modes"],
+        recommended_inspection=explanation["recommended_inspection"],
+        requires_technician_review=explanation["requires_technician_review"],
+    )
+>>>>>>> 71e2efe2d68cd43dd44afd7755372df259c9948e

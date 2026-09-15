@@ -1,43 +1,47 @@
 # Integrations Implementation Guide
 
-**Owners:** Integrations track owner(s) — split across mobile offline-sync and notifications/auth
+**Owner:** Integrations track owner
 **Reads:** `00-PROJECT-DOC.md` §3–4 before starting.
+**Note:** Flutter mobile offline-first work now has its own guide — `08-MOBILE-GUIDE.md`. This doc
+covers what's left: notifications and the cross-client auth strategy.
 
 ---
 
 ## 1. Scope
 
-Three integration surfaces that don't fit neatly in Frontend/Backend but connect them:
+Two integration surfaces that connect Frontend, Backend, and Mobile without belonging fully to any one:
 
-1. **Flutter mobile app — offline-first rework** for technicians.
-2. **SMS notifications** (technician dispatch, escalation alerts).
-3. **Auth/RBAC as consumed by clients** — how Next.js and Flutter both actually use the JWT from
-   `/api/v1/auth/login`.
+1. **SMS notifications** (technician dispatch, escalation alerts).
+2. **Auth/RBAC as consumed by clients** — how Next.js and Flutter both actually use the JWT from
+   `/api/v1/auth/login`. (Mobile-specific implementation detail lives in `08-MOBILE-GUIDE.md` §4 —
+   this section is where the two clients agree on a shared approach.)
 
-## 2. Mobile offline-first (owner: whoever owns mobile)
+## 2. SMS notifications
 
-**Why:** technicians work near loading arms/pumps — exactly where connectivity is worst. The app must
-be usable with no signal and reconcile once back online.
+**Status: implemented** (Build Plan Phase 2/3, `09-SMS-PHOTO-THEME-DEPLOYMENT-NOTES.md`) — provider is
+Africa's Talking, wrapped in `integrations/africastalking_client.py`, called from exactly one place
+(`api/notifications.py`). `POST /api/v1/notifications/sms` is real; it just no-ops with status
+`SKIPPED_NO_CREDENTIALS` until `AFRICASTALKING_USERNAME`/`AFRICASTALKING_API_KEY` are set as host
+secrets (never committed). Dispatch call site: `tasks.notify_dispatch`, enqueued from
+`api/workorders.py`'s DISPATCHED transition — approve → technician match → parts check (all already
+done by that point) → SMS + push in parallel.
 
-- Local store as source of truth for the technician's assigned work orders (Isar or Drift — pick one
-  and use it consistently, don't mix local-storage approaches across screens).
-- Background sync queue: status updates (accepted, in-progress, completed) made offline get queued
-  locally and pushed to `PATCH`/`POST /api/v1/maintenance/work-orders/...` once connectivity returns.
-- Conflict handling: if a work order was reassigned or escalated server-side while the technician was
-  offline, the sync step must surface that conflict to the technician clearly, not silently overwrite
-  either side.
-- Fallback channel: since this is also the SMS recipient, a technician with zero data connectivity
-  still gets the initial dispatch notice via SMS even if the app itself can't sync yet.
-- Keep the existing `--dart-define=API_BASE_URL=...` configurability — offline mode doesn't change how
-  the backend URL is set, only how aggressively the app defers hitting it.
+The SMS also carries the mobile deep link (`maintainnexus://work-orders/{id}` — enterprise/sideload
+distribution, no domain verification needed) so tapping it opens the app straight to the work order,
+same outcome as a push, without depending on a Firebase project existing yet.
 
-## 3. SMS notifications (owner: whoever isn't on mobile)
+Non-smartphone technicians (flagged in `api/technicians.py`) get a different message — a numbered
+reply prompt ("Reply 1=Accept 3=Complete to WO-xxxx") — and a `pending_sms_prompts` row instead. The
+inbound webhook (`POST /api/v1/notifications/sms/inbound`, protected by a `?token=` shared secret —
+`AFRICASTALKING_INBOUND_TOKEN`) matches strictly on phone number + the exact echoed code, never "most
+recent open prompt," and routes through the same lifecycle-event writer
+(`api.workorders.advance_work_order_status`) every other status change uses — see `tests/test_sms_reply.py`.
+`tasks.expire_stale_sms_prompts` (Celery Beat, same cadence as `escalate_stale_approvals`) cleans up
+abandoned prompts.
 
-- Backend calls `POST /api/v1/notifications/sms` internally (see Backend guide) on: work-order dispatch
-  (to the assigned technician) and escalation (to the supervisor).
 - Pick a provider (e.g. Twilio) and wrap it behind that one internal endpoint — don't call the provider
   SDK from multiple places in the codebase.
-- Log every send attempt to `sms_log` (project doc §5) with delivery status — this matters for the
+- Every send attempt is logged to `sms_log` (project doc §5) with delivery status — this matters for the
   audit trail and for debugging "technician says they never got the alert." `sms_log` doesn't need
   the full hash-chain treatment (`07-AUDITING-GUIDE.md`) since it's operational logging rather than
   a safety/compliance record, but it should still be insert-only — no code path should update a
@@ -45,35 +49,31 @@ be usable with no signal and reconcile once back online.
 - Message content should be short and actionable: equipment, station, urgency, and a link/deep-link
   into the mobile app if the app is installed.
 
-## 4. Auth/RBAC as consumed by clients
+## 3. Auth/RBAC as consumed by clients
 
 - Both Next.js and Flutter call `POST /api/v1/auth/login` and store the returned JWT (Next.js: httpOnly
   cookie via a server action/route handler, not localStorage; Flutter: secure storage, not shared prefs).
 - Both call `GET /api/v1/auth/me` on session start to get role + station scoping, and use that only to
   drive UI — the actual enforcement is server-side (Backend guide §2 step 2), so a client bug here is a
   UX problem, not a security hole, but it should still be correct.
-- Token refresh strategy: agree on one approach (short-lived JWT + refresh token, or long-lived JWT with
-  reasonable expiry) between mobile and web rather than each picking independently, since both hit the
-  same `/auth` endpoints.
+- Current backend tokens are signed HS256 bearer tokens with a one-hour expiry. Refresh tokens are not
+  implemented; agree on a refresh strategy before production deployment.
 
-## 5. Tasks
+## 4. Tasks
 
-- **Mobile owner**: offline local store + sync queue + conflict surfacing in the mobile app; SMS
-  deep-link handling on the receiving end.
-- **Notifications/auth owner**: SMS provider integration behind the internal endpoint + `sms_log`;
-  help define the shared token storage/refresh approach with both Frontend and mobile.
+- **Integrations owner**: SMS provider integration behind the internal endpoint + `sms_log`; define
+  the shared token storage/refresh approach with both Frontend (`01-FRONTEND-GUIDE.md`) and Mobile
+  (`08-MOBILE-GUIDE.md`).
 
-## 6. AI context block
+## 5. AI context block
 
 ```
-I'm working on integrations for MaintainNexus: offline-first sync for the Flutter technician app,
-SMS notifications (dispatch + escalation), and how both Next.js and Flutter clients consume JWT
-auth from a shared FastAPI backend.
+I'm working on integrations for MaintainNexus: SMS notifications (dispatch + escalation), and
+defining how Next.js and Flutter clients consume JWT auth from a shared FastAPI backend. Mobile's
+own offline-sync implementation is a separate track (08-MOBILE-GUIDE.md) — I coordinate the shared
+auth contract with it but don't own its implementation.
 
 Hard constraints:
-- Mobile local storage is the source of truth while offline; a background queue syncs status changes
-  once connectivity returns, and any server-side conflict (reassignment/escalation while offline) is
-  surfaced to the technician, never silently overwritten.
 - SMS sending goes through exactly one internal backend endpoint (POST /api/v1/notifications/sms) —
   no provider SDK calls scattered elsewhere, and every send is logged for the audit trail.
 - Tokens are stored securely (httpOnly cookie for web, secure storage for mobile) — never
@@ -82,3 +82,4 @@ Hard constraints:
   treat a client fix here as closing a security gap.
 Help me implement against these constraints.
 ```
+

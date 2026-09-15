@@ -18,7 +18,7 @@ timing) and SMS provider credentials as secrets, not code.
 |---|---|
 | `ml-service` | Serves `/predict-risk`. Can be a separate container or a module inside the API initially — but give it its own health check either way so it can be scaled/redeployed independently later. |
 | `web` (Next.js) | Build with `output: 'standalone'` for a small container image. Needs `API_BASE_URL` and the auth/JWT config as env vars, same pattern as the existing `--dart-define=API_BASE_URL` approach for Flutter. |
-| existing: postgres, redis, api, worker, beat | Keep as-is; add the new tables via the existing safe-migration pattern already used for `alert_task_id`. The migration for `work_order_lifecycle_events`/`audit_logs` must also revoke UPDATE/DELETE grants on those tables for the app's DB role (`07-AUDITING-GUIDE.md`) — this is a permissions change, not just a schema change, so include it explicitly in the migration review rather than assuming the schema diff covers it. |
+| existing: postgres, redis, api, worker, beat | Use the `db_migrations` one-shot service as the PostgreSQL admin. It creates the schema, additive legacy columns, the `APP_DB_USER` runtime role, and explicit grants. API/worker/beat use the runtime role; `audit_logs` and `work_order_lifecycle_events` revoke UPDATE/DELETE at the database grant level. |
 
 ## 3. Environment/config discipline
 
@@ -35,7 +35,7 @@ timing) and SMS provider credentials as secrets, not code.
   API) — this replaces the previously-documented Netlify/GitHub-Pages-for-Flutter-Web approach, since
   that was static-hosting-specific and Next.js needs a server runtime for the parts of this app that
   use server components/SSR.
-- Flutter mobile: standard app store / internal distribution build pipeline (see Integrations guide for
+- Flutter mobile: standard app store / internal distribution build pipeline (see `08-MOBILE-GUIDE.md` for
   the offline-sync implications on build config).
 - Backend + ML service + Postgres + Redis: keep on the same host/cluster as today unless load testing
   says otherwise — don't split them preemptively.
@@ -53,9 +53,11 @@ notification path just for this.
 
 - Backend: run the existing test suite (flag the missing `prometheus-client` dependency issue from
   Phase 1 — make sure CI installs from `requirements.txt` cleanly, not just the local dev env) plus new
-  tests for lifecycle-event persistence, RBAC denial paths, and audit-chain integrity (write a test
-  that asserts a direct UPDATE/DELETE against the app's DB role actually fails, not just that the
-  application code doesn't attempt one — the grant revocation is the real control).
+  tests for lifecycle-event persistence, RBAC denial paths, and audit-chain integrity. The
+  UPDATE/DELETE-rejection test is implemented in `tests/test_db_migrations_grants.py` — it spins up a
+  real Postgres and asserts the app role's UPDATE/DELETE against `audit_logs` is rejected by the
+  database itself, not just that the application code doesn't attempt one. Wire a Postgres service
+  container into CI and set `TEST_ADMIN_DATABASE_URL` so it actually runs instead of skipping.
 - Frontend: typecheck + lint + build on every PR; add at least a smoke test hitting a mocked
   `/auth/me` + `/dashboard/summary` before merging role-gating changes.
 - Mobile: `flutter analyze` (already passing per Phase 1 notes) — also replace the currently
@@ -69,9 +71,10 @@ notification path just for this.
   store is — don't put these in `.env` files that get committed).
 - Update CORS config for the new frontend origin.
 - Include the audit-table permission revocation in the migration review checklist, not just the
-  schema diff.
+  schema diff — implemented in `database/run_migrations.py`, run automatically by the `db_migrations`
+  service, so the checklist item is now "confirm the job ran and exited 0", not a manual grant check.
 - Set up CI pipeline stages per §5.
-- Confirm and document the mobile app release/distribution process with the Integrations owner.
+- Confirm and document the mobile app release/distribution process with the Mobile owner.
 
 ## 7. AI context block
 

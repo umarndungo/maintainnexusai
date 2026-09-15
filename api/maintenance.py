@@ -14,31 +14,30 @@ import uuid
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
+from database.auditing import append_audit_log
 from database.db import SessionLocal
 from database.models import AuditLog
+from api.auth import require_internal_or_user
 from etl.ge_validation import validate_telemetry_data
 from etl.metrics import alerts_ingested
-from etl.telemetry import process_raw_telemetry
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/alerts", tags=["Alerts"])
+router = APIRouter(
+    prefix="/api/v1/alerts",
+    tags=["Alerts"],
+    dependencies=[Depends(require_internal_or_user)],
+)
 
 
 def _write_audit_log(event_name: str, payload: dict):
     db = SessionLocal()
     try:
-        db.add(
-            AuditLog(
-                event_name=event_name,
-                payload=json.dumps(payload),
-                timestamp=datetime.now(timezone.utc),
-            )
-        )
+        append_audit_log(db, event_name, payload)
         db.commit()
     finally:
         db.close()
@@ -103,13 +102,7 @@ async def receive_alert(alert: AlertPayload):
     # Store the task_id with the alert payload for later retrieval.
     db = SessionLocal()
     try:
-        db.add(
-            AuditLog(
-                event_name="ALERT_RECEIVED",
-                payload=json.dumps(persisted_payload),
-                timestamp=datetime.now(timezone.utc),
-            )
-        )
+        append_audit_log(db, "ALERT_RECEIVED", persisted_payload)
         db.commit()
     finally:
         db.close()
@@ -137,16 +130,32 @@ async def receive_alert(alert: AlertPayload):
 
 
 class TelemetryPayload(BaseModel):
+    """Raw telemetry accepted from sensors/UI. Only the legacy fields are
+    required so existing callers keep working; the richer sensor readings
+    below are optional and, when a caller doesn't have them, are filled in
+    with neutral defaults by ``etl.telemetry.enrich_for_scoring`` before ML
+    scoring (see that module for exactly what's inferred vs. defaulted)."""
+
+    model_config = ConfigDict(extra="allow")
+
     equipment_id: str
     temperature: float
     vibration: float
     installation_age_hours: int
     timestamp: str
+    asset_id: str | None = None
+    asset_type: str | None = None
+    operating_state: str | None = None
+    alarm_code: str | None = None
+    pressure_bar: float | None = None
+    flow_rate_m3h: float | None = None
+    motor_current_a: float | None = None
+    valve_position_pct: float | None = None
 
 
 @router.post("/telemetry", status_code=status.HTTP_202_ACCEPTED)
 async def receive_telemetry(telemetry: TelemetryPayload):
-    """Accept raw telemetry and create an alert only when it qualifies."""
+    """Validate and enqueue raw telemetry; Celery performs risk scoring."""
     telemetry_dict = telemetry.model_dump()
     if not validate_telemetry_data(telemetry_dict):
         return JSONResponse(
@@ -157,31 +166,22 @@ async def receive_telemetry(telemetry: TelemetryPayload):
             },
         )
 
-    alert_payload = process_raw_telemetry(telemetry_dict)
-    if alert_payload is None:
-        _write_audit_log("TELEMETRY_ACCEPTED", telemetry_dict)
-        return {
-            "status": "accepted",
-            "alert_created": False,
-            "message": "Telemetry validated but did not exceed alert threshold.",
-        }
-
-    alerts_ingested.inc()
-    alert_payload["received_at"] = datetime.now(timezone.utc).isoformat()
-    _write_audit_log("ALERT_RECEIVED", alert_payload)
+    task_id = str(uuid.uuid4())
+    telemetry_dict["task_id"] = task_id
+    _write_audit_log("TELEMETRY_RECEIVED", telemetry_dict)
 
     try:
-        from tasks import process_alert
+        from tasks import process_telemetry
 
-        process_alert.delay(alert_payload)
-        logger.info("Alert %s enqueued to Celery from telemetry.", alert_payload["task_id"])
+        process_telemetry.delay(telemetry_dict)
+        logger.info("Telemetry %s enqueued to Celery.", task_id)
     except Exception as exc:
-        logger.error("Failed to enqueue alert %s: %s", alert_payload["task_id"], exc)
+        logger.error("Failed to enqueue telemetry %s: %s", task_id, exc)
 
     return {
         "status": "queued",
-        "task_id": alert_payload["task_id"],
-        "data": alert_payload,
+        "task_id": task_id,
+        "data": telemetry_dict,
     }
 
 
@@ -203,15 +203,27 @@ async def list_recent_alerts():
         )
 
         alerts = []
+        # Dedup by task_id (02-BACKEND-GUIDE.md §3) — a retried Celery task
+        # or a direct re-POST of the same alert writes a second
+        # ALERT_RECEIVED row for the same task_id; the newest one wins
+        # since `records` is already newest-first. A row with no task_id
+        # can't be deduplicated against anything, so it's always kept.
+        seen_task_ids = set()
         for record in records:
             try:
                 payload = json.loads(record.payload)
             except json.JSONDecodeError:
                 continue
 
+            task_id = payload.get("task_id")
+            if task_id is not None:
+                if task_id in seen_task_ids:
+                    continue
+                seen_task_ids.add(task_id)
+
             alerts.append(
                 {
-                    "task_id": payload.get("task_id"),
+                    "task_id": task_id,
                     "equipment_id": payload.get("equipment_id"),
                     "part_number": payload.get("part_number"),
                     "severity": payload.get("severity"),

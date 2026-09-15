@@ -29,14 +29,12 @@ def build_work_order_payload(alert: dict, technician: dict) -> dict:
             - equipment_id   : asset needing repair
             - technician_id  : assigned technician
             - part_number    : replacement part
-            - status         : initial lifecycle state (``"CREATED"``)
             - alert_task_id  : optional upstream alert ID for correlation with the originating alert
     """
     work_order = {
         "equipment_id": alert["equipment_id"],
         "technician_id": technician["id"],
         "part_number": alert["part_number"],
-        "status": "CREATED",  # initial state before dispatch
     }
 
     if alert.get("risk_probability") is not None:

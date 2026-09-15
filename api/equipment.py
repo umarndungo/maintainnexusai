@@ -9,9 +9,14 @@ for a real warehouse management system database.
 import random
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from api.auth import require_roles
 
-router = APIRouter(prefix="/api/v1/warehouse", tags=["Inventory"])
+router = APIRouter(
+    prefix="/api/v1/warehouse",
+    tags=["Inventory"],
+    dependencies=[Depends(require_roles("technician", "engineer", "executive", "supervisor"))],
+)
 
 _PARTS = [
     "Pump Seal Kit #A4",
@@ -38,28 +43,37 @@ _PARTS = [
 
 PARTS = _PARTS
 
-EQUIPMENT_IDS = [
-    "PUMP-101",
-    "PUMP-102",
-    "PUMP-103",
-    "PUMP-104",
-    "PUMP-105",
-    "VALVE-201",
-    "VALVE-202",
-    "VALVE-203",
-    "MOTOR-301",
-    "MOTOR-302",
-    "MOTOR-303",
-    "COMP-401",
-    "COMP-402",
-    "COMP-403",
-    "SENSOR-501",
-    "SENSOR-502",
-    "SENSOR-503",
-    "CTRL-601",
-    "CTRL-602",
-    "CTRL-603",
-]
+# Prefix -> numeric-suffix range. Each maps to one of the ML model's 3
+# trained asset_type categories via etl.telemetry._ASSET_TYPES_BY_PREFIX
+# (PUMP/MOTOR/COMP -> PUMP, SENSOR/CTRL -> LOADING_ARM, VALVE -> VALVE,
+# ARM -> LOADING_ARM directly, no indirection).
+_EQUIPMENT_PREFIX_RANGES = (
+    ("PUMP", 100),
+    ("VALVE", 200),
+    ("MOTOR", 300),
+    ("COMP", 400),
+    ("SENSOR", 500),
+    ("CTRL", 600),
+    ("ARM", 700),
+)
+
+
+def _generate_equipment_fleet() -> list[str]:
+    """Randomize the equipment fleet once per process start — a fixed-size
+    pool (2-5 assets per prefix) so equipment-monitoring history stays
+    coherent for the life of a run, but the fleet itself differs between
+    restarts/deployments rather than being a hardcoded list. Every
+    category the model was trained on (PUMP, VALVE, LOADING_ARM) is
+    guaranteed present every run."""
+    fleet: list[str] = []
+    for prefix, base in _EQUIPMENT_PREFIX_RANGES:
+        count = random.randint(2, 5)
+        suffixes = random.sample(range(1, 100), count)  # no duplicate suffix within a prefix
+        fleet.extend(f"{prefix}-{base + suffix}" for suffix in suffixes)
+    return fleet
+
+
+EQUIPMENT_IDS = _generate_equipment_fleet()
 
 # In-memory inventory store — maps part names to on-hand quantities.
 # In production this would query an ERP or WMS database.

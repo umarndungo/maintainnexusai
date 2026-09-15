@@ -1,6 +1,26 @@
 # MaintainNexus - Predictive Maintenance & Work Order Dispatch Infrastructure
 
+<<<<<<< HEAD
 MaintainNexus is a predictive maintenance and work order dispatch system designed to streamline industrial equipment maintenance workflows. It provides a complete pipeline from alert ingestion through technician dispatch, with automated scheduling, audit logging, inventory checks, and a Next.js dashboard UI (migration from the existing Flutter implementation).
+=======
+> Phase 2 web dashboard: use `web/` (Next.js). The mobile target is `technician-mobile-app/`
+> (Flutter) — `maintain_nexus_ui/`, the older Flutter dashboard, is disabled and renamed to
+> `_disabled_maintain_nexus_ui/`. Use `docs/04-DEPLOYMENT-GUIDE.md` for current web deployment.
+> Never replace the team guides in `docs/` with web build output.
+
+## Run the current Next.js dashboard
+
+```powershell
+docker compose up --build
+```
+
+This includes the web container at http://localhost:3000 and the backend at http://localhost:8000/docs. For frontend development against a local or shared API, see `web/README.md`. The current backend demo user IDs are `engineer-demo`, `supervisor-demo`, and `executive-demo`.
+
+Current contract gaps are recorded in `docs/FRONTEND-INTEGRATION-STATUS.md`; a passing frontend build does not establish completion of every backend/ML/mobile requirement.
+
+
+MaintainNexus is a predictive maintenance and work order dispatch system designed to streamline industrial equipment maintenance workflows. It provides a complete pipeline from alert ingestion through technician dispatch, with automated scheduling, audit logging, inventory checks, and a Flutter dashboard UI.
+>>>>>>> 71e2efe2d68cd43dd44afd7755372df259c9948e
 
 ## Architecture Overview
 
@@ -11,8 +31,12 @@ maintain-nexus/
 ├── api/             # Mock FastAPI service suite (Inventory, Alerts, HR, Work Orders, Dashboard)
 ├── etl/             # Data pipeline: extraction, validation, transformation, loading
 ├── database/        # PostgreSQL persistence with SQLAlchemy ORM and audit logging
+<<<<<<< HEAD
 ├── maintain_nexus_ui/ # Legacy Flutter UI retained during migration to Next.js
 ├── frontend/         # Next.js dashboard target (to be created)
+=======
+├── _disabled_maintain_nexus_ui/ # Old Flutter dashboard, disabled — see technician-mobile-app/
+>>>>>>> 71e2efe2d68cd43dd44afd7755372df259c9948e
 ├── tests/           # Pytest integration and unit tests
 └── .github/         # CI/CD automation via GitHub Actions
 ```
@@ -35,7 +59,7 @@ maintain-nexus/
     flutter config --enable-windows-desktop
     ```
 
-## Quickstart Instructions
+## Backend Quickstart
 
 1. **Clone the repository:**
    ```bash
@@ -43,80 +67,113 @@ maintain-nexus/
    cd maintain-nexus
    ```
 
-2. **Launch backend services with Docker Compose:**
+2. **Create the local environment file:**
    ```bash
-   docker compose up --build
+   cp .env.example .env
    ```
 
-   The backend will auto-create missing tables and apply a safe `alert_task_id` schema migration on first startup.
+   Edit `.env` to set the host ports, public API/domain address, database credentials, `AUTH_SECRET`,
+   and `INTERNAL_SERVICE_TOKEN`. `.env` is ignored by Git and must never be committed. Compose uses
+   `API_BASE_URL` for host/public clients and `API_INTERNAL_BASE_URL` with Docker service names
+   (`web_api`, `postgres_db`, and `redis`) for container-to-container traffic. Host clients use the
+   published `API_PORT`.
 
-3. **Open API docs:**
-   Visit [http://localhost:8000/docs](http://localhost:8000/docs).
-
-4. **Run the Flutter dashboard:**
+3. **Launch backend services with Docker Compose:**
    ```bash
-   cd maintain_nexus_ui
+   make up
+   ```
+
+   `make up` runs `scripts/setup_db.sh` (fills in any blank required secret —
+   `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`, `AUTH_SECRET`, `INTERNAL_SERVICE_TOKEN` — starts
+   `postgres_db`/`redis`, waits for Postgres to report healthy, and runs `db_migrations`), then
+   brings up the rest of the stack. Equivalent to running `./scripts/setup_db.sh` followed by
+   `docker compose up -d --build`; use the plain `docker compose up --build` form directly if you'd
+   rather manage `.env` and migrations yourself.
+
+   Compose starts:
+   - `web_api`: FastAPI at `http://localhost:8000`
+   - `postgres_db`: PostgreSQL on port `5432`
+   - `redis`: Celery broker/backend on port `6379`
+   - `db_migrations`: one-shot admin migration and grant job
+   - `celery_worker`: asynchronous alert, ML scoring, and work-order processing
+   - `celery_beat`: five-minute demo telemetry and stale-approval escalation schedules
+
+   `db_migrations` connects as `POSTGRES_USER` and creates the schema, the `maintain_app` runtime
+   role, additive legacy columns, and database grants. The API, worker, and beat connect using
+   `APP_DB_USER` and cannot update or delete rows in `audit_logs` or
+   `work_order_lifecycle_events`. Runtime services wait for the migration job to complete before
+   starting.
+
+4. **Open API docs:**
+   Visit `http://localhost:${API_PORT}/docs`, using the `API_PORT` value from `.env`.
+
+5. **Get a development bearer token:**
+   ```bash
+   TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+     -H 'Content-Type: application/json' \
+     -d '{"user_id":"engineer-demo"}' | python -c \
+     'import json,sys; print(json.load(sys.stdin)["access_token"])')
+   ```
+
+   The available development users are `tech-demo`, `engineer-demo`, `executive-demo`, and
+   `supervisor-demo`. Production authentication must replace these demo users and set a strong
+   `AUTH_SECRET`.
+
+6. **Check the authenticated API:**
+   ```bash
+   curl http://localhost:8000/api/v1/auth/me \
+     -H "Authorization: Bearer $TOKEN"
+   curl http://localhost:8000/api/v1/dashboard/summary \
+     -H "Authorization: Bearer $TOKEN"
+   ```
+
+7. **Submit telemetry:**
+   ```bash
+   curl -X POST http://localhost:8000/api/v1/alerts/telemetry \
+     -H "Authorization: Bearer $TOKEN" \
+     -H 'Content-Type: application/json' \
+     -d '{"equipment_id":"PUMP-101","temperature":90,"vibration":2,"installation_age_hours":1000,"timestamp":"2026-09-13T12:00:00Z"}'
+   ```
+
+   Telemetry returns `202` after validation and queueing. ML scoring occurs in `celery_worker`, not
+   inside the Uvicorn request handler. Watch the asynchronous path with:
+   ```bash
+   docker compose logs -f web_api celery_worker celery_beat
+   ```
+
+8. **Stop the backend:**
+   ```bash
+   make down
+   ```
+
+   To run the migration/grant job again after changing schema code:
+   ```bash
+   make migrate
+   ```
+
+   This job is idempotent. It does not delete historical rows or drop the legacy
+   `work_orders.status` column.
+
+9. **Run the mobile app** (`technician-mobile-app/` — see its README for details):
+   ```bash
+   cd technician-mobile-app
    flutter pub get
    flutter run
    ```
+
 ## Run the app
 
-### Option A: Run locally with Docker Compose
+Backend + web dashboard:
+```bash
+make up
+```
+API docs at `http://localhost:8000/docs`, web dashboard at `http://localhost:3000` (see "Run the
+current Next.js dashboard" above).
 
-1. Start the backend and required services:
-   ```bash
-   docker compose up --build
-   ```
-2. Confirm the API is available at:
-   - `http://localhost:8000/docs`
-3. In a second terminal, run the Flutter UI from the project root:
-   ```bash
-   cd maintain_nexus_ui
-   flutter pub get
-   flutter run
-   ```
-4. Open the Flutter app on the device/emulator shown by `flutter run`.
-
-### Option B: Run the Flutter app directly
-
-1. From the Flutter app directory:
-   ```bash
-   cd maintain_nexus_ui
-   flutter pub get
-   flutter run
-   ```
-2. The app assumes the backend API is available at `http://localhost:8000/api/v1` by default.
-
-### Run the Flutter app on web
-
-1. Build for web:
-   ```bash
-   cd maintain_nexus_ui
-   flutter build web --release
-   ```
-2. Serve locally for testing:
-   ```bash
-   cd maintain_nexus_ui/build/web
-   python3 -m http.server 8080
-   ```
-3. Open `http://localhost:8080` in your browser.
-
-### Run the Flutter app on desktop
-
-1. Ensure desktop support is enabled:
-   ```bash
-   flutter config --enable-linux-desktop
-   flutter config --enable-macos-desktop
-   flutter config --enable-windows-desktop
-   flutter doctor
-   ```
-2. Run on the desktop target:
-   ```bash
-   cd maintain_nexus_ui
-   flutter run -d linux
-   ```
-
-> Replace `linux` with `macos` or `windows` as needed.
+**`maintain_nexus_ui/` (the old Flutter dashboard) is disabled** — renamed to
+`_disabled_maintain_nexus_ui/`, no longer part of the standard run/build/deploy workflow. The
+maintained mobile client is `technician-mobile-app/` (see `technician-mobile-app/README.md` for
+`flutter run`/`flutter build` instructions there instead).
 
 ## Feature Summary
 
@@ -124,15 +181,21 @@ maintain-nexus/
 - **Technician lookup** via `/api/v1/hr/technicians/available`
 - **Inventory checks** via `/api/v1/warehouse/stock`
 - **Work order dispatch** via `/api/v1/maintenance/work-orders`
-- **Work order status** is computed from `created_at` and returns `duration_seconds` for elapsed time
+- **Work order status** is derived exclusively from append-only lifecycle events
 - **Alert/work order correlation** via `alert_task_id`, preserving the originating alert ID on the dispatched work order
 - **Dashboard summary** via `/api/v1/dashboard/summary`
-- **Startup schema migration** automatically adds the `alert_task_id` column for existing PostgreSQL databases on first backend startup
+- **Schema migrations** run in the one-shot `db_migrations` service before any backend service starts — it creates the schema, additive columns like `alert_task_id` for existing databases, and the least-privilege `maintain_app` role
 - **Backend health status** now exposes `backend_status` in the dashboard summary response for clearer frontend state and diagnostics
 - **Unique scheduled alerts** are generated each Celery run to prevent repeated duplicate mock ingestion
 - **Duplicate-safe APIs** dedupe work orders and recent alerts before returning lists
 - **Flutter UI** with live counts, technician availability, inventory status, and navigation to recent orders and alerts
 - **Backend refresh behavior** handles eventual consistency for async alert ingestion by polling the summary endpoint after task submission
+- **Phase 2 security** requires signed bearer tokens and server-side role checks on every API router
+- **Internal services** use `X-Internal-Service`; `/api/v1/notifications/sms` is never available to end-user roles
+- **Downtime** is persisted as equipment windows opened at dispatch and closed at completion
+- **Live events** are available through the authenticated `/api/v1/events` SSE feed
+- **ML risk scoring** is available through the internal `/api/v1/ml/predict-risk` endpoint; live ETL calls it with `X-Internal-Service`
+- **Telemetry ingestion** returns `202` after validation and queueing; the Celery worker performs ML scoring asynchronously
 
 ## API Endpoints
 
@@ -144,6 +207,17 @@ maintain-nexus/
 | POST | `/api/v1/maintenance/work-orders` | Dispatch a work order to a technician |
 | GET | `/api/v1/dashboard/summary` | Retrieve dashboard summary counts, available technicians, and inventory status |
 | POST | `/api/v1/alerts/telemetry` | Ingest raw telemetry and create an alert payload when the risk threshold is exceeded |
+| POST | `/api/v1/auth/login` | Issue a one-hour signed bearer token for a demo user |
+| GET | `/api/v1/auth/me` | Return the authenticated user and role/station claims |
+| PATCH | `/api/v1/maintenance/work-orders/{id}/approve` | Engineer/supervisor approval transition |
+| PATCH | `/api/v1/maintenance/work-orders/{id}/reject` | Engineer/supervisor rejection transition |
+| PATCH | `/api/v1/maintenance/work-orders/{id}/escalate` | Supervisor/internal SLA escalation transition |
+| GET | `/api/v1/maintenance/work-orders/{id}/lifecycle` | Read persisted lifecycle history |
+| GET | `/api/v1/dashboard/equipment/{id}/downtime` | Read equipment downtime windows |
+| GET | `/api/v1/dashboard/executive-summary` | Read executive downtime aggregation |
+| GET | `/api/v1/events` | Authenticated server-sent events stream |
+| POST | `/api/v1/notifications/sms` | Internal-only notification queue boundary |
+| POST | `/api/v1/ml/predict-risk` | Internal-only XGBoost risk scoring contract |
 
 ## Dashboard Summary Endpoint
 
@@ -158,13 +232,8 @@ The Flutter dashboard consumes this endpoint to keep the UI in sync with backend
 
 ## Flutter Dashboard UI
 
-The dashboard now includes:
-
-- top-level system status and refresh indicator
-- quick actions for sample work order dispatch and sample alert submission
-- available technician list and current inventory status cards
-- navigation cards for recent work orders and recent alerts
-- a scrollable layout with pull-to-refresh support
+`_disabled_maintain_nexus_ui/` (the old Flutter dashboard this section described) is disabled. The
+web dashboard is `web/` (Next.js); the maintained mobile client is `technician-mobile-app/`.
 
 ## ETL Pipeline Flow
 
@@ -179,6 +248,9 @@ The dashboard now includes:
 ## Database Schema
 
 - **work_orders** — Tracks dispatched work orders with equipment, technician, part, status, timestamps, and optional `alert_task_id` linking to the source alert
+- **work_order_lifecycle_events** — Hash-chained, insert-only lifecycle transitions; current status is read from the latest event
+- **downtime_windows** — Equipment downtime intervals linked to work orders
+- **audit_logs** — Hash-chained append-only operational audit events
 - **audit_logs** — Records all pipeline events with event name, payload, and timestamp
 
 ## Work Order Lifecycle
@@ -201,7 +273,38 @@ pytest
 pytest -v
 ```
 
+`tests/test_db_migrations_grants.py` is a Postgres integration test proving that the `maintain_app`
+role is rejected by the database itself on `UPDATE`/`DELETE` against `audit_logs` and
+`work_order_lifecycle_events`. It skips automatically when no Postgres is reachable. To run it for
+real, point `TEST_ADMIN_DATABASE_URL` at an admin connection (e.g. the Compose `postgres_db` service
+published to the host) before running `pytest`.
+
 ## Release Notes
+
+### Database setup helper script
+
+- Added `scripts/setup_db.sh`, a wrapper around `docker-compose.yml` for first-time local setup: it
+  creates `.env` from `.env.example` if missing, generates a random value for any of
+  `POSTGRES_PASSWORD` / `APP_DB_PASSWORD` / `AUTH_SECRET` / `INTERNAL_SERVICE_TOKEN` left blank,
+  brings up `postgres_db` and `redis`, waits for Postgres to report healthy, and runs `db_migrations`.
+  It does not add any database logic of its own — `database/run_migrations.py` remains the one place
+  that creates the schema, the `maintain_app` role, and its grants.
+- Added a `Makefile` (`up`, `down`, `migrate`, `logs`, `ps`) so `make up` runs the setup script and
+  then starts the full stack in one command; `make down`/`make migrate` wrap the corresponding
+  `docker compose` calls.
+
+### Database migration service and least-privilege application role
+
+- Added a one-shot `db_migrations` Compose service that runs schema creation, additive column
+  migrations, and database grants as the PostgreSQL admin role, before any other service starts.
+- Added a dedicated `maintain_app` runtime role: full CRUD on operational tables, but only
+  `SELECT`/`INSERT` on `audit_logs` and `work_order_lifecycle_events` — `UPDATE`/`DELETE` on those
+  two tables is revoked at the database grant level. `web_api`, `celery_worker`, and `celery_beat`
+  now connect as `maintain_app` instead of the PostgreSQL admin role.
+- Removed the old startup schema initialization (`database/init_db.py`) from the API lifespan and
+  the Celery worker-ready signal, now that `db_migrations` runs before those services start.
+- Added `tests/test_db_migrations_grants.py` to prove the grant revocation against a real Postgres
+  database rather than by inspection of the migration SQL alone.
 
 ### Backend schema and alert-work order correlation
 
@@ -219,10 +322,12 @@ pytest -v
 - **Docker Compose** — Container orchestration
 - **Flutter** — Dashboard UI
 
-## Deploying the Flutter Dashboard
+## Deploying
 
-This project includes a web-ready Flutter dashboard at `maintain_nexus_ui/`.
+`maintain_nexus_ui/` (the old Flutter web dashboard this section covered — Netlify/GitHub Pages
+static hosting) is disabled; that guidance no longer applies. Current deployment docs:
 
+<<<<<<< HEAD
 ### Build the web app
 
 ```bash
@@ -333,3 +438,9 @@ The platform covers **pumps, loading arms and valves**. Automated scheduling/rea
 Shared contracts: `docs/09-DATA-REQUIREMENTS-MATRIX.md`, `docs/10-ML-BACKEND-CONTRACT.md`, and `schemas/`.
 
 **Data provenance:** public KPC information is used for verified context; raw KPC SCADA/IoT/CMMS data is not assumed public. Prototype data must be labelled synthetic.
+=======
+- **Backend** (FastAPI + Celery worker + Celery Beat): `render.yaml` at the repo root, or see
+  `docs/04-DEPLOYMENT-GUIDE.md`.
+- **Web dashboard** (`web/`, Next.js): `web/README.md`.
+- **Mobile** (`technician-mobile-app/`, Flutter): `technician-mobile-app/README.md`.
+>>>>>>> 71e2efe2d68cd43dd44afd7755372df259c9948e

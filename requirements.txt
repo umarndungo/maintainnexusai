@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic
 requests
+python-dotenv
 sqlalchemy
 psycopg2-binary
 celery
@@ -12,3 +13,12 @@ numpy
 scikit-learn
 pytest
 prometheus-client
+xgboost
+scikit-learn
+numpy
+Faker
+python-multipart
+# Notifications providers (Build Plan Phase 2/3) — safe to install even
+# before credentials exist; integrations/*_client.py no-op without them.
+africastalking
+firebase-admin

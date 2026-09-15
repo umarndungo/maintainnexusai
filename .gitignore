@@ -109,3 +109,7 @@ yarn-error.log*
 !/data/staging/.gitkeep
 !/data/processed/.gitkeep
 !/data/synthetic/.gitkeep
+
+# Next.js generated files
+.next/
+.claude/

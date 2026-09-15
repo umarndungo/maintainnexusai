@@ -1,5 +1,7 @@
 # MaintainNexus Tutorial
 
+> Historical Phase 1 tutorial. The current web dashboard is Next.js in `web/`; use `web/README.md` and the Phase 2 guides in `docs/` for startup and deployment. Flutter web and time-based lifecycle instructions below describe the older implementation. **`maintain_nexus_ui/` has since been disabled and renamed to `_disabled_maintain_nexus_ui/`** in favor of `technician-mobile-app/` (the maintained mobile client) — the Flutter run/build/deploy steps below no longer apply as written. `scripts/reset_and_seed_data.py` has also been removed (it wrote fabricated data straight to Postgres, bypassing telemetry/ML/ETL entirely); the only live-data source now is `etl/telemetry.py`'s generator, run on a schedule by Celery Beat.
+
 This tutorial explains how to create, run, and deploy the MaintainNexus project. It is written for a beginner and includes the full workflow, the project structure, the backend/frontend setup, and deployment guidance.
 
 ## Project Overview
@@ -159,18 +161,17 @@ If you use client-side routing later, add a `_redirects` file in `build/web/` wi
 ```bash
 cd maintain_nexus_ui
 flutter build web --release
-rm -rf ../docs
-mkdir ../docs
-cp -r build/web/* ../docs/
+mkdir -p ../legacy-web-site
+cp -r build/web/* ../legacy-web-site/
 cd ..
-git add docs
+git add legacy-web-site
 git commit -m "Deploy Flutter web dashboard to GitHub Pages"
 git push
 ```
 
 Then set GitHub Pages source to:
 - branch: `main`
-- folder: `/docs`
+- publish using a separate site branch; retain `/docs` for the team guides
 
 #### Option B: Use `gh-pages`
 
