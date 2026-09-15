@@ -46,6 +46,30 @@ every other screen sits inside.
 - **Dark mode**: toggle in Settings (System / Light / Dark), persisted
   via `shared_preferences`. Defaults to Dark on first launch.
 
+## SMS deep link (Build Plan Phase 2 step 5)
+
+A dispatch SMS carries `maintainnexus://work-orders/{id}` — tapping it
+opens the app straight to that work order's detail screen, cold-start
+or warm-start. This is the "push notification opens straight to the
+work order" outcome from the spec, delivered via SMS instead of FCM:
+distribution is enterprise/sideload (Build Plan Phase 0), and there's
+no Firebase project yet, so `integrations/fcm_client.py` on the
+backend stays wired but inert while this ships tonight.
+
+- `lib/services/deep_link_service.dart` — listens via `app_links` for
+  both the cold-start initial link and any warm-start link tap.
+- `android/app/src/main/AndroidManifest.xml` — `maintainnexus://`
+  intent-filter (custom scheme, not an `https://` App Link — needs no
+  domain ownership/verification, which matters for sideload).
+- `ios/Runner/Info.plist` — matching `CFBundleURLTypes` entry.
+- If the linked work order isn't cached locally yet (this build has no
+  live API sync — see below), `DeepLinkNotFoundScreen` says so plainly
+  instead of crashing; `AppController.tryById` is the null-safe lookup
+  behind it.
+- Manual test: `adb shell am start -a android.intent.action.VIEW -d "maintainnexus://work-orders/WO-3391"`
+  (with the app installed) opens straight to that work order if it's
+  in `lib/data/mock_data.dart`, or the not-found screen otherwise.
+
 ## What's not implemented yet
 
 This is a screens-and-design-system build, not the full app from the

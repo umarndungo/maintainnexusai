@@ -24,6 +24,18 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- SMS deep link (Build Plan Phase 2 step 5): a dispatch SMS
+                 carries maintainnexus://work-orders/{id}; tapping it opens
+                 straight to that work order's detail screen. A custom
+                 scheme (not an https:// App Link) needs no domain
+                 ownership/verification, matching enterprise/sideload
+                 distribution — see lib/services/deep_link_service.dart. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="maintainnexus" android:host="work-orders"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

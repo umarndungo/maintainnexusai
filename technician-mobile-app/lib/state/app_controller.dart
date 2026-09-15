@@ -122,6 +122,17 @@ class AppController extends ChangeNotifier {
 
   WorkOrder byId(String id) => _workOrders.firstWhere((w) => w.id == id);
 
+  /// Null-safe lookup — used by the SMS deep link handler, which can be
+  /// tapped for a work order this phone hasn't cached locally yet (this
+  /// build has no live API sync; see README.md). Prefer this over
+  /// [byId] whenever the id didn't come from this app's own list.
+  WorkOrder? tryById(String id) {
+    for (final wo in _workOrders) {
+      if (wo.id == id) return wo;
+    }
+    return null;
+  }
+
   void acceptWorkOrder(String id) {
     final wo = byId(id);
     wo.status = WorkOrderStatus.inProgress;

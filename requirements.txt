@@ -16,3 +16,8 @@ scikit-learn
 numpy
 apscheduler
 Faker
+python-multipart
+# Notifications providers (Build Plan Phase 2/3) — safe to install even
+# before credentials exist; integrations/*_client.py no-op without them.
+africastalking
+firebase-admin

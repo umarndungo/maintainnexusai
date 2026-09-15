@@ -27,6 +27,13 @@ def _ensure_legacy_columns(connection) -> None:
         columns = {column["name"] for column in inspector.get_columns("work_orders")}
         if "alert_task_id" not in columns:
             connection.execute(text("ALTER TABLE work_orders ADD COLUMN alert_task_id VARCHAR"))
+        for column, definition in (
+            ("completion_notes", "TEXT"),
+            ("parts_used", "VARCHAR"),
+            ("photo_object_path", "VARCHAR"),
+        ):
+            if column not in columns:
+                connection.execute(text(f"ALTER TABLE work_orders ADD COLUMN {column} {definition}"))
 
     for table in ("audit_logs", "work_order_lifecycle_events"):
         if table not in inspector.get_table_names():
