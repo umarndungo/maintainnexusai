@@ -28,12 +28,8 @@ maintain-nexus/
 ├── api/             # Mock FastAPI service suite (Inventory, Alerts, HR, Work Orders, Dashboard)
 ├── etl/             # Data pipeline: extraction, validation, transformation, loading
 ├── database/        # PostgreSQL persistence with SQLAlchemy ORM and audit logging
-<<<<<<< HEAD
-├── maintain_nexus_ui/ # Legacy Flutter UI retained during migration to Next.js
 ├── frontend/         # Next.js dashboard target (to be created)
-=======
 ├── _disabled_maintain_nexus_ui/ # Old Flutter dashboard, disabled — see technician-mobile-app/
->>>>>>> 71e2efe2d68cd43dd44afd7755372df259c9948e
 ├── tests/           # Pytest integration and unit tests
 └── .github/         # CI/CD automation via GitHub Actions
 ```

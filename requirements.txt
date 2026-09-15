@@ -14,13 +14,15 @@ scikit-learn
 pytest
 prometheus-client
 xgboost
-# Pinned to the highest release installable on this image's python:3.10-slim
-# base (shap>=0.50.0 requires Python >=3.11) so a fresh build always
-# resolves the same version rather than drifting. This version's
-# TreeExplainer cannot parse this model's base_score field (see
-# ml/scoring.py's _build_explainer for why and how that's handled without
-# crashing the API) -- see that comment before bumping either pin.
-shap==0.49.1
+# Base image is python:3.11-slim (see Dockerfile), so shap>=0.50.0 is
+# installable -- that's the release where TreeExplainer starts parsing
+# this model's bracketed base_score field correctly (verified against
+# the real model.json in a throwaway python:3.11-slim container: shap
+# resolved to 0.51.0 and built cleanly). Capped below 0.52.0, which
+# requires Python >=3.12 -- one bump further than this image is on.
+# ml/scoring.py's _build_explainer() still degrades gracefully on
+# failure regardless, as a safety net for any other version drift.
+shap>=0.50.0,<0.52.0
 Faker
 python-multipart
 # Notifications providers (Build Plan Phase 2/3) — safe to install even
