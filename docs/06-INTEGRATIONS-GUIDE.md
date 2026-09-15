@@ -18,11 +18,30 @@ Two integration surfaces that connect Frontend, Backend, and Mobile without belo
 
 ## 2. SMS notifications
 
-- Backend exposes `POST /api/v1/notifications/sms` as an internal queue boundary. Provider-backed sending
-  and dispatch/escalation call sites are still follow-up work; no end-user role may call this route.
+**Status: implemented** (Build Plan Phase 2/3, `09-SMS-PHOTO-THEME-DEPLOYMENT-NOTES.md`) — provider is
+Africa's Talking, wrapped in `integrations/africastalking_client.py`, called from exactly one place
+(`api/notifications.py`). `POST /api/v1/notifications/sms` is real; it just no-ops with status
+`SKIPPED_NO_CREDENTIALS` until `AFRICASTALKING_USERNAME`/`AFRICASTALKING_API_KEY` are set as host
+secrets (never committed). Dispatch call site: `tasks.notify_dispatch`, enqueued from
+`api/workorders.py`'s DISPATCHED transition — approve → technician match → parts check (all already
+done by that point) → SMS + push in parallel.
+
+The SMS also carries the mobile deep link (`maintainnexus://work-orders/{id}` — enterprise/sideload
+distribution, no domain verification needed) so tapping it opens the app straight to the work order,
+same outcome as a push, without depending on a Firebase project existing yet.
+
+Non-smartphone technicians (flagged in `api/technicians.py`) get a different message — a numbered
+reply prompt ("Reply 1=Accept 3=Complete to WO-xxxx") — and a `pending_sms_prompts` row instead. The
+inbound webhook (`POST /api/v1/notifications/sms/inbound`, protected by a `?token=` shared secret —
+`AFRICASTALKING_INBOUND_TOKEN`) matches strictly on phone number + the exact echoed code, never "most
+recent open prompt," and routes through the same lifecycle-event writer
+(`api.workorders.advance_work_order_status`) every other status change uses — see `tests/test_sms_reply.py`.
+`tasks.expire_stale_sms_prompts` (Celery Beat, same cadence as `escalate_stale_approvals`) cleans up
+abandoned prompts.
+
 - Pick a provider (e.g. Twilio) and wrap it behind that one internal endpoint — don't call the provider
   SDK from multiple places in the codebase.
-- When provider delivery is added, log every send attempt to `sms_log` (project doc §5) with delivery status — this matters for the
+- Every send attempt is logged to `sms_log` (project doc §5) with delivery status — this matters for the
   audit trail and for debugging "technician says they never got the alert." `sms_log` doesn't need
   the full hash-chain treatment (`07-AUDITING-GUIDE.md`) since it's operational logging rather than
   a safety/compliance record, but it should still be insert-only — no code path should update a
