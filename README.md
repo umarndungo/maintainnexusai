@@ -1,6 +1,6 @@
 # MaintainNexus - Predictive Maintenance & Work Order Dispatch Infrastructure
 
-MaintainNexus is a predictive maintenance and work order dispatch system designed to streamline industrial equipment maintenance workflows. It provides a complete pipeline from alert ingestion through technician dispatch, with automated scheduling, audit logging, inventory checks, and a Flutter dashboard UI.
+MaintainNexus is a predictive maintenance and work order dispatch system designed to streamline industrial equipment maintenance workflows. It provides a complete pipeline from alert ingestion through technician dispatch, with automated scheduling, audit logging, inventory checks, and a Next.js dashboard UI (migration from the existing Flutter implementation).
 
 ## Architecture Overview
 
@@ -11,7 +11,8 @@ maintain-nexus/
 ├── api/             # Mock FastAPI service suite (Inventory, Alerts, HR, Work Orders, Dashboard)
 ├── etl/             # Data pipeline: extraction, validation, transformation, loading
 ├── database/        # PostgreSQL persistence with SQLAlchemy ORM and audit logging
-├── maintain_nexus_ui/ # Flutter dashboard application
+├── maintain_nexus_ui/ # Legacy Flutter UI retained during migration to Next.js
+├── frontend/         # Next.js dashboard target (to be created)
 ├── tests/           # Pytest integration and unit tests
 └── .github/         # CI/CD automation via GitHub Actions
 ```
@@ -321,3 +322,14 @@ http://localhost:8000/api/v1
 ```
 
 If the backend is deployed to a different hostname or path, change `API_BASE_URL` accordingly.
+
+
+## Target operational workflow
+
+`Telemetry → ML prediction → decision engine → automated API action → operational outcome → feedback`
+
+The platform covers **pumps, loading arms and valves**. Automated scheduling/reassignment is the prototype action target; safety-critical physical control is outside the ML service boundary.
+
+Shared contracts: `docs/09-DATA-REQUIREMENTS-MATRIX.md`, `docs/10-ML-BACKEND-CONTRACT.md`, and `schemas/`.
+
+**Data provenance:** public KPC information is used for verified context; raw KPC SCADA/IoT/CMMS data is not assumed public. Prototype data must be labelled synthetic.

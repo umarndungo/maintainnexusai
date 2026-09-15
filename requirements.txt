@@ -8,5 +8,7 @@ celery
 redis
 great_expectations
 pandas
+numpy
+scikit-learn
 pytest
 prometheus-client
