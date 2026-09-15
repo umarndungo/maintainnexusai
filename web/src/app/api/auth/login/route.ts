@@ -20,6 +20,6 @@ export async function POST(request: NextRequest) {
     nextResponse.cookies.set("maintainnexus_token", result.access_token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 3600 });
     return nextResponse;
   } catch {
-    return NextResponse.json({ detail: "The MaintainNexus API is unavailable" }, { status: 503 });
+    return NextResponse.json({ detail: "The MaintainNexus AI API is unavailable" }, { status: 503 });
   }
 }

@@ -41,11 +41,11 @@ export function Icon({
 export function Brand({ company = false }: { company?: boolean }) {
   return (
     <div className={`product-brand ${company ? "company-brand" : ""}`}>
-      <Image src="/brand/kpc-mark.svg" width={40} height={56} alt="KPC" />
+      <Image src="/brand/assetguard-mark.svg" width={40} height={56} alt="MaintainNexus AI" />
       <div>
         <strong>
           {company ? (
-            "Kenya Pipeline Company"
+            "MaintainNexus AI"
           ) : (
             <>
               MaintainNexus <em>AI</em>

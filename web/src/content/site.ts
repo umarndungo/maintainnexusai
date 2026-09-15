@@ -1,8 +1,8 @@
 export const siteContent = {
-  brand: "MaintainNexus",
+  brand: "MaintainNexus AI",
   eyebrow: "A calmer way to keep the depot moving",
   headline: "Hear trouble before it becomes silence.",
-  intro: "MaintainNexus watches over the machines that carry your day, finds the quiet signs of strain, and brings the right people together before a small warning becomes a costly stop.",
+  intro: "MaintainNexus AI watches over the machines that carry your day, finds the quiet signs of strain, and brings the right people together before a small warning becomes a costly stop.",
   primaryCta: "Step inside",
   secondaryCta: "Follow the story",
   proof: [

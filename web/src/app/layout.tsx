@@ -12,9 +12,9 @@ const lato = Lato({
 
 
 export const metadata: Metadata = {
-  title: "MaintainNexus | Station overview",
+  title: "MaintainNexus AI | Station overview",
   description: "Predictive maintenance operations dashboard",
-  icons: { icon: "/brand/kpc-mark.svg" },
+  icons: { icon: "/brand/assetguard-mark.svg" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
