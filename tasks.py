@@ -73,6 +73,10 @@ celery_app.conf.beat_schedule = {
         "task": "tasks.expire_stale_sms_prompts",
         "schedule": crontab(minute="*/5"),
     },
+    "verify-audit-chain": {
+        "task": "tasks.verify_audit_chain",
+        "schedule": crontab(minute="*/5"),
+    },
 }
 
 logger = logging.getLogger(__name__)
@@ -309,6 +313,56 @@ def expire_stale_sms_prompts():
     if expired:
         _write_audit_log("SMS_PROMPTS_EXPIRED", {"count": expired})
     return expired
+
+
+@celery_app.task
+def verify_audit_chain():
+    """Scheduled half of the audit-chain integrity check.
+
+    ``GET /dashboard/audit-logs/verify`` (api/dashboard.py) already
+    recomputes both hash chains on request — but nothing previously ran
+    that check *without* a human asking for it, so a tampered/corrupted
+    chain could sit undetected indefinitely. This runs the identical
+    check (reusing api.dashboard._verify_chain rather than re-deriving
+    the walk) on the same 5-minute Beat cadence as the tasks above, and
+    writes an audit row only when a mismatch is actually found — the
+    missing scheduled half of 07-AUDITING-GUIDE.md §3/§6.
+    """
+    from api.dashboard import _verify_chain
+    from database.auditing import compute_audit_hash
+    from database.lifecycle import compute_lifecycle_hash
+    from database.models import AuditLog, WorkOrderLifecycleEvent
+
+    db = SessionLocal()
+    try:
+        audit_rows = db.query(AuditLog).order_by(AuditLog.id.asc()).all()
+        lifecycle_rows = (
+            db.query(WorkOrderLifecycleEvent).order_by(WorkOrderLifecycleEvent.id.asc()).all()
+        )
+        audit_ok, audit_checked = _verify_chain(audit_rows, compute_audit_hash)
+        lifecycle_ok, lifecycle_checked = _verify_chain(lifecycle_rows, compute_lifecycle_hash)
+    finally:
+        db.close()
+
+    chain_integrity = audit_ok and lifecycle_ok
+    checked_events = audit_checked + lifecycle_checked
+
+    if not chain_integrity:
+        logger.error(
+            "Scheduled audit-chain verification FAILED (checked %s events, audit_ok=%s lifecycle_ok=%s)",
+            checked_events,
+            audit_ok,
+            lifecycle_ok,
+        )
+        # A fresh session (_write_audit_log opens its own) — appending
+        # here doesn't retroactively fix whatever broke, it's the record
+        # that the break was detected and when.
+        _write_audit_log(
+            "AUDIT_CHAIN_INTEGRITY_FAILURE",
+            {"checked_events": checked_events, "audit_ok": audit_ok, "lifecycle_ok": lifecycle_ok},
+        )
+
+    return {"chain_integrity": chain_integrity, "checked_events": checked_events}
 
 
 # ---------------------------------------------------------------------------

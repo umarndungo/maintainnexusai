@@ -9,10 +9,11 @@ failure-detection semantics.
 """
 
 import requests
-from config import API_INTERNAL_BASE_URL
+from config import API_INTERNAL_BASE_URL, INTERNAL_SERVICE_TOKEN
 
 # Base URL — configurable so the Celery worker can reach the web_api container.
 BASE_URL = API_INTERNAL_BASE_URL
+_HEADERS = {"X-Internal-Service": INTERNAL_SERVICE_TOKEN}
 
 # Map failure codes to required technician certifications.
 # Extend this mapping as new equipment types are added.
@@ -44,7 +45,7 @@ def check_stock(part_number: str):
         Parsed JSON response on success, ``None`` on failure.
     """
     res = requests.get(
-        f"{BASE_URL}/warehouse/stock", params={"part_number": part_number}
+        f"{BASE_URL}/warehouse/stock", params={"part_number": part_number}, headers=_HEADERS
     )
     return res.json() if res.status_code == 200 else None
 
@@ -68,6 +69,7 @@ def get_technician(required_cert: str):
     res = requests.get(
         f"{BASE_URL}/hr/technicians/available",
         params={"required_cert": required_cert},
+        headers=_HEADERS,
     )
     if res.status_code == 200:
         data = res.json()

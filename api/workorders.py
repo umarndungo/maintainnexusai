@@ -265,6 +265,82 @@ async def escalate_work_order(work_order_id: str, actor: Annotated[dict, Depends
     return advance_work_order_status(work_order_id, actor, "ESCALATED", "Approval exceeded SLA")
 
 
+@router.patch("/work-orders/{work_order_id}/start")
+async def start_work_order(
+    work_order_id: str,
+    actor: Annotated[dict, Depends(require_roles("technician", "engineer", "supervisor"))],
+):
+    """DISPATCHED -> IN_PROGRESS. Until now the SMS-reply path
+    (api/notifications.py's inbound_sms, for feature-phone technicians)
+    was the *only* way to reach this status — this adds the direct HTTP
+    action for the app, through the same advance_work_order_status()
+    writer, so both paths produce identical audit-chained events."""
+    return advance_work_order_status(work_order_id, actor, "IN_PROGRESS", "Started by technician")
+
+
+class WorkOrderAssign(BaseModel):
+    technician_id: str
+
+
+@router.patch("/work-orders/{work_order_id}/assign")
+async def assign_work_order(
+    work_order_id: str,
+    body: WorkOrderAssign,
+    actor: Annotated[dict, Depends(require_roles("engineer", "supervisor"))],
+):
+    """Reassign technician_id on an existing work order — a roster change,
+    not a lifecycle-status transition, so it's recorded in the general
+    audit_logs hash chain (database.auditing) rather than as a
+    WorkOrderLifecycleEvent, keeping that table's rows strictly meaningful
+    status transitions. Validates the new technician against the roster
+    and that they're on shift, the same way etl.extract.get_technician
+    does at creation time; unlike creation, this doesn't re-check
+    certification against the originating failure_code, since
+    WorkOrderRecord doesn't persist that from the alert that created it —
+    a supervisor/engineer reassigning is trusted to judge fit themselves,
+    same trust level as manual escalation already carries."""
+    from api.technicians import get_technician_by_id
+    from database.auditing import append_audit_log
+
+    technician = get_technician_by_id(body.technician_id)
+    if technician is None:
+        raise HTTPException(status_code=404, detail=f"Unknown technician_id {body.technician_id!r}")
+    if not technician["on_shift"]:
+        raise HTTPException(status_code=409, detail=f"Technician {body.technician_id} is not currently on shift")
+
+    db = SessionLocal()
+    try:
+        record = _get_work_order(db, work_order_id)
+        previous_technician_id = record.technician_id
+        if previous_technician_id == body.technician_id:
+            raise HTTPException(status_code=409, detail="Work order is already assigned to this technician")
+        record.technician_id = body.technician_id
+        append_audit_log(
+            db,
+            "WORK_ORDER_REASSIGNED",
+            {
+                "work_order_id": record.id,
+                "from_technician_id": previous_technician_id,
+                "to_technician_id": body.technician_id,
+                "actor_id": actor["id"],
+                "actor_role": actor["role"],
+            },
+        )
+        db.commit()
+        status_now = current_work_order_status(db, record.id)
+    finally:
+        db.close()
+    publish_event(
+        {
+            "type": "work_order.reassigned",
+            "work_order_id": work_order_id,
+            "technician_id": body.technician_id,
+            "status": status_now,
+        }
+    )
+    return {"work_order_id": work_order_id, "technician_id": body.technician_id, "status": status_now}
+
+
 class WorkOrderComplete(BaseModel):
     """Close-out payload — Mobile spec Mockup 5 (notes, parts used, photo)."""
 
