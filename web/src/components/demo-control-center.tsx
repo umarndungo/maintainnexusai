@@ -17,7 +17,7 @@ export function DemoControlCenter() {
   const [busy, setBusy] = useState<Action | null>(null);
   const [message, setMessage] = useState("");
   const [stationId, setStationId] = useState("");
-  if (pathname !== "/dashboard") return null;
+  if (pathname !== "/dashboard" && pathname !== "/supervisor") return null;
 
   async function run(action: Action) {
     if (action === "work-order") {

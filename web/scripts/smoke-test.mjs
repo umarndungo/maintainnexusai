@@ -124,7 +124,7 @@ try {
   const filtered = await (await request("/dashboard?status=ESCALATED", cookie)).text();
   assert.ok(filtered.includes("WO-ESCALATED"));
   // The queue excludes pending rows; historical alert handoffs remain visible.
-  const filteredQueue = filtered.split('<article class="panel" id="work-orders">')[1].split('</article>')[0];
+  const filteredQueue = filtered.split('<section class="panel" id="work-orders">')[1].split('</section>')[0];
   assert.ok(!filteredQueue.includes('href="/work-orders/WO-PENDING"'));
   assert.ok(filteredQueue.includes('href="/work-orders/WO-ESCALATED"'));
   const count = seen.filter(item => item.path === "/api/v1/dashboard/summary").length;
@@ -140,7 +140,8 @@ try {
   assert.equal(seen.findLast(item => item.path.endsWith("/approve")).authorization, "Bearer test-engineer");
   assert.equal((await request("/api/proxy/maintenance/work-orders/WO-PENDING/escalate", cookie, { method: "PATCH" })).status, 403);
   assert.equal((await request("/api/proxy/maintenance/work-orders/WO-PENDING/escalate", session("supervisor"), { method: "PATCH" })).status, 200);
-  assert.ok((await (await request("/dashboard", session("supervisor"))).text()).includes("Supervisor escalation queue"));
+  await expectRedirect(await request("/dashboard", session("supervisor")), "/supervisor");
+  assert.ok((await (await request("/supervisor", session("supervisor"))).text()).includes("Escalation desk"));
   assert.equal((await request("/api/proxy/maintenance/work-orders/WO-PENDING/lifecycle", cookie)).status, 200);
   const audit = await (await request("/audit", cookie)).text();
   assert.ok(audit.includes("Verification unavailable") && audit.includes("ALERT RECEIVED"));
@@ -176,3 +177,4 @@ try {
   mock.close();
   mock.unref();
 }
+

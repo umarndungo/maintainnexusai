@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -29,5 +29,6 @@ export function LiveUpdates() {
     // EventSource reconnects automatically; readiness also reloads data missed offline.
     return () => { events.close(); if (refreshTimer) clearTimeout(refreshTimer); };
   }, [router]);
-  return <><span className="live-status" role="status">{status}</span>{alertEquipment && <div className="failure-notification" role="alert"><strong>New equipment failure alert</strong><span>{alertEquipment} requires attention. The alert details are updating.</span><button type="button" onClick={() => setAlertEquipment(null)} aria-label="Dismiss failure notification">Dismiss</button></div>}</>;
+  return <><span className="live-status" data-state={status === "Live updates connected" ? "connected" : "reconnecting"} role="status">{status}</span>{alertEquipment && <div className="failure-notification" role="alert"><strong>New equipment failure alert</strong><span>{alertEquipment} requires attention. The alert details are updating.</span><button type="button" onClick={() => setAlertEquipment(null)} aria-label="Dismiss failure notification">Dismiss</button></div>}</>;
 }
+
