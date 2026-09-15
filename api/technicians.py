@@ -72,12 +72,29 @@ def _generate_technicians():
                 "name": name,
                 "on_shift": index % 2 == 1,
                 "certs": certs,
+                # Demo phone numbers (deterministic, not random, so the
+                # SMS dispatch flow has a stable recipient across
+                # restarts) and a fixed subset flagged as feature-phone
+                # users for the SMS-reply path (Build Plan Phase 3) —
+                # every technician whose index ends in 5 or 9.
+                "phone_number": f"+2547{index:04d}00",
+                "non_smartphone": index % 5 in (0, 4),
             }
         )
     return technicians
 
 
 TECHNICIANS = _generate_technicians()
+TECHNICIANS_BY_ID = {tech["id"]: tech for tech in TECHNICIANS}
+
+
+def get_technician_by_id(technician_id: str) -> dict | None:
+    """Look up a technician's full record (phone, cert, shift) by id.
+
+    Used by the dispatch-notification task, which only has
+    ``technician_id`` off the ``WorkOrderRecord`` row.
+    """
+    return TECHNICIANS_BY_ID.get(technician_id)
 
 
 @router.get("/available", responses={404: {"description": "No eligible technician available on shift"}})
