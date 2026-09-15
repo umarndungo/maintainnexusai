@@ -258,6 +258,53 @@ class TestMLScoringIntegration:
         assert last["vibration_mm_s_lag_1"] == 4.0
         assert last["vibration_mm_s_delta_1"] == pytest.approx(1.0)
 
+    def test_anomalous_generated_telemetry_reliably_clears_alert_threshold(self, monkeypatch):
+        """generate_telemetry()'s anomalous branch (~3 of every 7 calls —
+        see etl.telemetry._ANOMALOUS_TELEMETRY_RATE/_ANOMALOUS_RANGES) must
+        reliably score above ALERT_CREATION_THRESHOLD against the real
+        trained model — this is what makes the demo alert/work-order/
+        decision-engine path actually fire and be testable end to end,
+        instead of depending on rare chance draws. Ranges were calibrated
+        this way (fresh per-asset history) via direct Monte Carlo probing
+        of ml.scoring: 300/300 samples cleared threshold, minimum 0.68.
+        """
+        import asyncio
+
+        import redis as redis_lib
+
+        from api.ml import RiskRequest, predict_risk as predict_risk_endpoint
+        from config import CELERY_BROKER_URL
+        from etl.feature_engineering import _history_key
+        from etl.telemetry import ALERT_CREATION_THRESHOLD, enrich_for_scoring, generate_telemetry
+
+        # Force the anomalous branch every call — its own probability gate
+        # is tested separately; this test only needs the *ranges* to hold.
+        monkeypatch.setattr("etl.telemetry.random.random", lambda: 0.0)
+
+        try:
+            client = redis_lib.Redis.from_url(
+                CELERY_BROKER_URL, socket_connect_timeout=1, socket_timeout=1
+            )
+            client.ping()
+        except redis_lib.RedisError:
+            client = None
+
+        for _ in range(10):
+            telemetry = generate_telemetry()
+            if client is not None:
+                # Match the fresh-history conditions these ranges were
+                # calibrated against, then recompute the same sensor
+                # reading's rolling features against that clean history —
+                # this reuses generate_telemetry()'s own random draw
+                # rather than sampling a new (uncleared) asset.
+                client.delete(_history_key(telemetry["asset_id"]))
+                telemetry = enrich_for_scoring(telemetry)
+            result = asyncio.run(predict_risk_endpoint(RiskRequest(**telemetry)))
+            assert result["risk_score"] > ALERT_CREATION_THRESHOLD, (
+                f"anomalous reading for {telemetry['asset_id']} scored "
+                f"{result['risk_score']}, expected > {ALERT_CREATION_THRESHOLD}"
+            )
+
 
 # =========================================================================
 # Tests: transform.py
@@ -335,6 +382,20 @@ class TestCheckStock:
         assert result["in_stock"] is False
 
     @patch("etl.extract.requests.get")
+    def test_sends_internal_service_header(self, mock_get):
+        """/api/v1/warehouse/stock requires require_internal_or_roles (see
+        api/equipment.py) — an unattended ETL caller with no user session
+        that omits this header always gets a 401 and the whole alert ->
+        work-order pipeline silently holds before ever reaching a
+        technician lookup or work-order creation."""
+        from config import INTERNAL_SERVICE_TOKEN
+
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"in_stock": True, "quantity_available": 1}
+        check_stock("Pump Seal Kit #A4")
+        assert mock_get.call_args.kwargs["headers"]["X-Internal-Service"] == INTERNAL_SERVICE_TOKEN
+
+    @patch("etl.extract.requests.get")
     def test_api_error_returns_none(self, mock_get):
         """Test test api error returns none."""
         mock_get.return_value.status_code = 500
@@ -357,6 +418,18 @@ class TestGetTechnician:
         result = get_technician("PUMP_SEAL")
         assert result is not None
         assert result["id"] == "TECH-101"
+
+    @patch("etl.extract.requests.get")
+    def test_sends_internal_service_header(self, mock_get):
+        """/api/v1/hr/technicians/available requires require_internal_or_roles
+        (see api/technicians.py) — same reasoning as
+        TestCheckStock.test_sends_internal_service_header above."""
+        from config import INTERNAL_SERVICE_TOKEN
+
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"available_technicians": []}
+        get_technician("PUMP_SEAL")
+        assert mock_get.call_args.kwargs["headers"]["X-Internal-Service"] == INTERNAL_SERVICE_TOKEN
 
     @patch("etl.extract.requests.get")
     def test_no_technician_returns_none(self, mock_get):

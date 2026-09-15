@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from api.auth import (
     create_access_token,
     get_current_user,
+    require_internal_or_roles,
     require_internal_service,
     require_roles,
 )
@@ -58,6 +59,36 @@ def test_internal_service_requires_exact_token():
         require_internal_service("wrong-token")
 
     assert error.value.status_code == 403
+
+
+def test_internal_or_roles_accepts_internal_token_or_matching_role():
+    """api/equipment.py's /warehouse/stock and api/technicians.py's
+    /hr/technicians/available both moved from require_roles to this —
+    an unattended ETL caller (no user session) now has a path in, without
+    loosening the existing human role restriction (unlike
+    require_internal_or_user, which drops the role check for any
+    logged-in user)."""
+    from config import INTERNAL_SERVICE_TOKEN
+
+    require_engineer_or_internal = require_internal_or_roles("engineer", "supervisor")
+
+    internal_user = require_engineer_or_internal(x_internal_service=INTERNAL_SERVICE_TOKEN, credentials=None)
+    assert internal_user["role"] == "internal"
+
+    token = create_access_token("engineer-demo")
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    human_user = require_engineer_or_internal(x_internal_service=None, credentials=creds)
+    assert human_user["id"] == "engineer-demo"
+
+    tech_token = create_access_token("tech-demo")
+    tech_creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=tech_token)
+    with pytest.raises(HTTPException) as error:
+        require_engineer_or_internal(x_internal_service=None, credentials=tech_creds)
+    assert error.value.status_code == 403
+
+    with pytest.raises(HTTPException) as error:
+        require_engineer_or_internal(x_internal_service=None, credentials=None)
+    assert error.value.status_code == 401
 
 
 def test_lifecycle_status_is_derived_and_hash_chained(db_session):

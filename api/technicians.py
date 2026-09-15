@@ -8,13 +8,17 @@ order. Uses an in-memory roster as a stand-in for a full HR system.
 
 import random
 from fastapi import APIRouter, Depends, HTTPException
-from api.auth import require_roles
+from api.auth import require_internal_or_roles
 from typing import Optional
 
+# The ETL pipeline (etl.extract.get_technician) needs to look up on-shift
+# technicians too, and it has no human role to present. require_internal_or_roles
+# (unlike require_internal_or_user) keeps the same role restriction for
+# human callers — it only adds an internal-service path alongside it.
 router = APIRouter(
     prefix="/api/v1/hr/technicians",
     tags=["HR"],
-    dependencies=[Depends(require_roles("technician", "engineer", "executive", "supervisor"))],
+    dependencies=[Depends(require_internal_or_roles("technician", "engineer", "executive", "supervisor"))],
 )
 
 _TECHNICIAN_NAMES = [

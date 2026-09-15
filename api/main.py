@@ -27,6 +27,8 @@ from api.monitoring import router as monitoring_router
 from api.monitoring import internal_router as monitoring_internal_router
 from api.notifications import router as notifications_router
 from api.notifications import public_router as notifications_public_router
+from api.operations import router as operations_router
+from api.operations import internal_router as operations_internal_router
 from api.auth import get_current_user
 from api.technicians import router as technicians_router
 from api.workorders import router as workorders_router
@@ -119,5 +121,7 @@ app.include_router(monitoring_router)
 app.include_router(monitoring_internal_router)
 app.include_router(notifications_router)
 app.include_router(notifications_public_router)
+app.include_router(operations_router)
+app.include_router(operations_internal_router)
 app.include_router(technicians_router)
 app.include_router(workorders_router)
