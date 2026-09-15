@@ -93,7 +93,7 @@ export default function LoginPage() {
           <i className="brand-rule" />
           <p className="auth-welcome">Welcome to</p>
           <h1>
-            MaintainNexus <em>AI</em>
+              MaintainNexus <em>AI</em>
           </h1>
           <p className="auth-subtitle">
             Sign in to access your operational workspace.
