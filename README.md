@@ -1,8 +1,7 @@
 # MaintainNexus - Predictive Maintenance & Work Order Dispatch Infrastructure
 
-<<<<<<< HEAD
 MaintainNexus is a predictive maintenance and work order dispatch system designed to streamline industrial equipment maintenance workflows. It provides a complete pipeline from alert ingestion through technician dispatch, with automated scheduling, audit logging, inventory checks, and a Next.js dashboard UI (migration from the existing Flutter implementation).
-=======
+
 > Phase 2 web dashboard: use `web/` (Next.js). The mobile target is `technician-mobile-app/`
 > (Flutter) — `maintain_nexus_ui/`, the older Flutter dashboard, is disabled and renamed to
 > `_disabled_maintain_nexus_ui/`. Use `docs/04-DEPLOYMENT-GUIDE.md` for current web deployment.
@@ -19,8 +18,6 @@ This includes the web container at http://localhost:3000 and the backend at http
 Current contract gaps are recorded in `docs/FRONTEND-INTEGRATION-STATUS.md`; a passing frontend build does not establish completion of every backend/ML/mobile requirement.
 
 
-MaintainNexus is a predictive maintenance and work order dispatch system designed to streamline industrial equipment maintenance workflows. It provides a complete pipeline from alert ingestion through technician dispatch, with automated scheduling, audit logging, inventory checks, and a Flutter dashboard UI.
->>>>>>> 71e2efe2d68cd43dd44afd7755372df259c9948e
 
 ## Architecture Overview
 
@@ -327,7 +324,6 @@ published to the host) before running `pytest`.
 `maintain_nexus_ui/` (the old Flutter web dashboard this section covered — Netlify/GitHub Pages
 static hosting) is disabled; that guidance no longer applies. Current deployment docs:
 
-<<<<<<< HEAD
 ### Build the web app
 
 ```bash
@@ -438,9 +434,9 @@ The platform covers **pumps, loading arms and valves**. Automated scheduling/rea
 Shared contracts: `docs/09-DATA-REQUIREMENTS-MATRIX.md`, `docs/10-ML-BACKEND-CONTRACT.md`, and `schemas/`.
 
 **Data provenance:** public KPC information is used for verified context; raw KPC SCADA/IoT/CMMS data is not assumed public. Prototype data must be labelled synthetic.
-=======
+
 - **Backend** (FastAPI + Celery worker + Celery Beat): `render.yaml` at the repo root, or see
   `docs/04-DEPLOYMENT-GUIDE.md`.
 - **Web dashboard** (`web/`, Next.js): `web/README.md`.
 - **Mobile** (`technician-mobile-app/`, Flutter): `technician-mobile-app/README.md`.
->>>>>>> 71e2efe2d68cd43dd44afd7755372df259c9948e
+
