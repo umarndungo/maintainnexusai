@@ -14,6 +14,7 @@ from typing import Any, Dict
 
 from api.equipment import EQUIPMENT_IDS, PARTS
 
+from etl import telemetry_pipeline
 from etl.feature_engineering import engineer_features
 from etl.ge_validation import validate_telemetry_data
 from etl.ml_client import predict_risk
@@ -40,6 +41,7 @@ _ASSET_TYPES_BY_PREFIX = {
     "COMP": "PUMP",
     "SENSOR": "LOADING_ARM",
     "CTRL": "LOADING_ARM",
+    "ARM": "LOADING_ARM",  # equipment whose id says what it is directly, no indirection
 }
 _OPERATING_STATES = ("LOADING", "IDLE")
 _ASSET_ID_BUCKETS = {"VALVE": 24, "PUMP": 12, "LOADING_ARM": 12}
@@ -213,9 +215,21 @@ def score_and_decide(
     if not validate_telemetry_data(telemetry):
         return None, None
 
-    # Score using a fully model-featured copy; the alert payload below still
-    # carries the caller's original (unenriched) telemetry.
-    score_result = predict_risk(enrich_for_scoring(telemetry))
+    # ETL: Extract (pull the asset's Redis history) + Transform (the 48
+    # lag/delta/rolling-window features) — enrich_for_scoring already does
+    # both. Load persists this record BEFORE it's sent to ML, so a durable,
+    # queryable reading exists even if the scoring call below fails.
+    enriched = enrich_for_scoring(telemetry)
+    reading_id = telemetry_pipeline.load(
+        equipment_id=telemetry["equipment_id"],
+        asset_type=enriched.get("asset_type", "PUMP"),
+        telemetry=telemetry,
+        station_id=telemetry.get("station_id"),
+    )
+
+    # Score using the fully model-featured copy; the alert payload below
+    # still carries the caller's original (unenriched) telemetry.
+    score_result = predict_risk(enriched)
     if score_result is None:
         return None, None
     risk_probability = (
@@ -223,7 +237,14 @@ def score_and_decide(
         if isinstance(score_result, dict)
         else float(score_result)
     )
-    if risk_probability <= alert_threshold:
+    alert_created = risk_probability > alert_threshold
+    telemetry_pipeline.update_score(
+        reading_id,
+        score_result if isinstance(score_result, dict) else {"risk_score": risk_probability},
+        alert_created,
+    )
+
+    if not alert_created:
         return score_result, None
 
     alert_payload = build_alert_from_telemetry(

@@ -36,6 +36,13 @@ with connectivity as the enhancement.
 - **Fallback channel**: the technician is also the SMS recipient (see `06-INTEGRATIONS-GUIDE.md` §2),
   so the initial dispatch notice still reaches them via SMS even if the app itself can't sync yet.
   A deep link in that SMS should open the app straight to the relevant work order once it's back online.
+  **Implemented** (Build Plan Phase 2): `maintainnexus://work-orders/{id}`, handled by
+  `technician-mobile-app/lib/services/deep_link_service.dart` via the `app_links` package — custom
+  scheme, not an `https://` App Link, so it needs no domain ownership/verification (matches
+  enterprise/sideload distribution). Cold-start before sign-in intentionally drops the link rather
+  than queuing it (real "hold until synced" behavior needs the live API integration below, which
+  isn't wired up yet); warm-start opens straight to the work order, or a plain "not synced to this
+  phone yet" screen if it isn't in the local list.
 - **Configurable backend URL**: keep the existing `--dart-define=API_BASE_URL=...` pattern — offline
   mode changes how aggressively the app defers hitting the backend, not how the URL is set.
 

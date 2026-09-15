@@ -6,10 +6,13 @@ import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 
 const seen = [];
-const prediction = { failure_probability: .2, failure_predicted: true, risk_level: "MEDIUM", threshold: .12, prediction_horizon_hours: 6 };
+const prediction = { failure_probability: .2, failure_predicted: true, risk_level: "MEDIUM", threshold: .12, prediction_horizon_hours: 6, target: "failure_next_6h", model_version: "xgboost-3.4.1", prediction_id: "PREDICTION-1", timestamp: "2026-09-01T00:00:00Z", top_features: ["vibration_mm_s_rolling_mean_60"] };
 const thresholds = { failure_probability: .12, warning_probability: null, prediction_horizon_hours: 6, source: "saved model", sensor_limits: null };
 const equipmentReading = { id: 1, equipment_id: "PUMP-101", station_id: "STATION-1", telemetry: { temperature_c: 95, vibration_mm_s: 5, timestamp: "2026-09-01T00:00:00Z" }, prediction, state: "FAILURE_DETECTED", received_at: "2026-09-01T00:00:01Z" };
 let executiveShape = "current";
+let monitoringUnavailable = false;
+let ordersUnavailable = false;
+let auditMalformed = false;
 const mock = createServer(async (req, res) => {
   let text = "";
   for await (const chunk of req) text += chunk;
@@ -28,16 +31,18 @@ const mock = createServer(async (req, res) => {
     res.write("event: ready\ndata: {}\n\n");
     return;
   }
+  if (req.url === "/api/v1/monitoring/equipment" && monitoringUnavailable) return reply({ detail: "Audit history contains unchained legacy rows; migration is required" }, 503);
   if (req.url === "/api/v1/monitoring/equipment") return reply({ equipment: [equipmentReading], thresholds, source: "Persisted telemetry" });
   if (req.url.endsWith("/history")) return reply({ readings: [{ ...equipmentReading, id: 0, telemetry: { ...equipmentReading.telemetry, temperature_c: 90, timestamp: "2026-08-31T23:59:00Z" } }, equipmentReading], thresholds });
   if (req.url === "/api/v1/hr/technicians/available") return reply({ available_technicians: [{ id: "TECH-101", name: "Alice", certs: ["HVAC"], on_shift: true, active_work_orders: 1 }], source: "HR roster" });
   if (req.url === "/api/v1/dashboard/summary") return reply({ open_work_orders: 1, alert_count: 1, uptime_percentage: 99, recent_health_checks: [{ equipment_id: "PUMP-101", health_status: "NORMAL", checked_at: new Date().toISOString() }] });
+  if (req.url === "/api/v1/maintenance/work-orders" && req.method === "GET" && ordersUnavailable) return reply({ detail: "Maintenance store unavailable" }, 503);
   if (req.url === "/api/v1/maintenance/work-orders" && req.method === "GET") return reply([
     { work_order_id: "WO-PENDING", equipment_id: "PUMP-101", status: "PENDING_APPROVAL", assigned_technician_id: "TECH-101", alert_task_id: "ALERT-1" },
     { work_order_id: "WO-ESCALATED", equipment_id: "PUMP-101", status: "ESCALATED" },
   ]);
   if (req.url === "/api/v1/dashboard/audit-logs") return reply([{ id: 1, event_name: "ALERT_RECEIVED", payload: "{}", timestamp: new Date().toISOString() }]);
-  if (req.url === "/api/v1/dashboard/audit-logs/verify") return reply({}, 404);
+  if (req.url === "/api/v1/dashboard/audit-logs/verify") return reply({}, auditMalformed ? 200 : 404);
   if (req.url === "/api/v1/dashboard/executive-summary") return reply(executiveShape === "current" ? { downtime_minutes: 42, open_windows: 1, completed_windows: 0, uptime_trend: "stable" } : { downtime_avoided_minutes: 123, cost_saved: 456, uptime_trend: [{ date: "2026-09-01", uptime: 99 }], station_comparison: [{ station_id: "STATION-1", uptime: 99 }] });
   if (req.url === "/api/v1/alerts/recent") return reply([{ task_id: "ALERT-1", equipment_id: "PUMP-101", severity: "HIGH", failure_code: "ERR_TEST", prediction, telemetry: equipmentReading.telemetry, part_number: "Seal", required_cert: "HVAC" }]);
   if (req.url === "/api/v1/hse/overview") return reply({}, 404);
@@ -94,13 +99,32 @@ try {
   const equipment = await (await request("/equipment/PUMP-101", cookie)).text();
   assert.ok(equipment.includes("sensor-chart") && equipment.includes("TECH-101") && equipment.includes("Approve &amp; dispatch"));
   assert.ok(equipment.includes("Complete") || equipment.includes("repair progress"));
+  assert.ok(equipment.includes("xgboost-3.4.1") && equipment.includes("PREDICTION-1"));
+  assert.ok(equipment.includes("Global model feature importance") && equipment.includes("do not explain this individual prediction"));
+  assert.ok(dashboard.includes("Simulated uptime") && dashboard.includes("Simulated downtime"));
+  const emptyFilter = await (await request("/equipment?state=NORMAL", cookie)).text();
+  assert.ok(emptyFilter.includes("No equipment matches this state filter."));
+  assert.ok(!emptyFilter.includes("No equipment telemetry has been recorded"));
+  assert.ok(monitor.includes("Approaching threshold (not configured)"));
+  monitoringUnavailable = true;
+  const unavailable = await (await request("/equipment", cookie)).text();
+  assert.ok(unavailable.includes("unchained legacy rows; migration is required"));
+  monitoringUnavailable = false;
+  ordersUnavailable = true;
+  const missingOrders = await (await request("/equipment", cookie)).text();
+  assert.ok(missingOrders.includes("task correlation cannot be confirmed"));
+  assert.ok(!missingOrders.includes("No correlated maintenance task returned"));
+  ordersUnavailable = false;
+  const executiveEquipment = await (await request("/equipment/PUMP-101", session("executive"))).text();
+  assert.ok(executiveEquipment.includes("PREDICTION-1"));
+  assert.ok(!executiveEquipment.includes(">Approve &amp; dispatch</button>"));
   assert.equal((await request("/api/proxy/maintenance/work-orders/WO-PENDING/start", session("executive"), { method: "PATCH" })).status, 403);
   assert.equal((await request("/api/proxy/maintenance/work-orders/WO-PENDING/assign", cookie, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ technician_id: "TECH-101" }) })).status, 200);
   assert.ok(seen.some(item => item.path.endsWith("/assign") && item.data.technician_id === "TECH-101" && item.authorization === "Bearer test-engineer"));
   const filtered = await (await request("/dashboard?status=ESCALATED", cookie)).text();
   assert.ok(filtered.includes("WO-ESCALATED"));
   // The queue excludes pending rows; historical alert handoffs remain visible.
-  const filteredQueue = filtered.split('<article class="panel" id="work-orders">')[1].split('</article>')[0];
+  const filteredQueue = filtered.split('<section class="panel" id="work-orders">')[1].split('</section>')[0];
   assert.ok(!filteredQueue.includes('href="/work-orders/WO-PENDING"'));
   assert.ok(filteredQueue.includes('href="/work-orders/WO-ESCALATED"'));
   const count = seen.filter(item => item.path === "/api/v1/dashboard/summary").length;
@@ -116,12 +140,20 @@ try {
   assert.equal(seen.findLast(item => item.path.endsWith("/approve")).authorization, "Bearer test-engineer");
   assert.equal((await request("/api/proxy/maintenance/work-orders/WO-PENDING/escalate", cookie, { method: "PATCH" })).status, 403);
   assert.equal((await request("/api/proxy/maintenance/work-orders/WO-PENDING/escalate", session("supervisor"), { method: "PATCH" })).status, 200);
-  assert.ok((await (await request("/dashboard", session("supervisor"))).text()).includes("Supervisor escalation queue"));
+  await expectRedirect(await request("/dashboard", session("supervisor")), "/supervisor");
+  assert.ok((await (await request("/supervisor", session("supervisor"))).text()).includes("Escalation desk"));
   assert.equal((await request("/api/proxy/maintenance/work-orders/WO-PENDING/lifecycle", cookie)).status, 200);
   const audit = await (await request("/audit", cookie)).text();
   assert.ok(audit.includes("Verification unavailable") && audit.includes("ALERT RECEIVED"));
+  auditMalformed = true;
+  const malformedAudit = await (await request("/audit", cookie)).text();
+  assert.ok(malformedAudit.includes("Verification unavailable") && malformedAudit.includes("complete audit verification result"));
+  assert.ok(!malformedAudit.includes("<h2>Verification failed</h2>"));
+  auditMalformed = false;
   const executive = await (await request("/executive", session("executive"))).text();
   assert.ok(executive.includes("Recorded downtime") && executive.includes("stable"));
+  assert.ok(executive.includes("does not calculate avoided downtime or cost savings"));
+  assert.ok(!executive.includes("<span>Cost saved</span>"));
   executiveShape = "planned";
   const planned = await (await request("/executive", session("executive"))).text();
   assert.ok(planned.includes("123m") && planned.includes("456") && planned.includes("uptime-chart"));
@@ -132,7 +164,7 @@ try {
   assert.match(new TextDecoder().decode((await reader.read()).value), /event: ready/);
   streamAbort.abort();
   assert.equal((await request("/api/auth/logout", cookie, { method: "POST" })).status, 200);
-  console.log("Frontend smoke checks passed: login, role guards, filters, cookie actions, SSE, and current/planned contracts.");
+  console.log("Frontend smoke checks passed: login, role guards, filters, cookie actions, SSE, and ML evidence, truthful metric labels, backend errors, read-only monitoring, and current/planned contracts.");
 } finally {
   if (process.platform === "win32") {
     const stop = spawn("taskkill", ["/pid", String(app.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
@@ -145,3 +177,4 @@ try {
   mock.close();
   mock.unref();
 }
+

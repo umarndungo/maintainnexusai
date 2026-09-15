@@ -1,21 +1,20 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Lato } from "next/font/google";
 import "./globals.css";
+import "./design-system.css";
 import { DemoControlCenter } from "@/components/demo-control-center";
 
-const geistSans = Inter({
-  variable: "--font-geist-sans",
+const lato = Lato({
+  variable: "--font-lato",
+  weight: ["400", "700", "900"],
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "MaintainNexus | Station overview",
   description: "Predictive maintenance operations dashboard",
+  icons: { icon: "/brand/kpc-mark.svg" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -23,7 +22,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       data-scroll-behavior="smooth"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${lato.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}<DemoControlCenter /></body>
     </html>

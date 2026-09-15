@@ -30,7 +30,7 @@ from api.equipment import EQUIPMENT_IDS, PARTS
 from database.auditing import append_audit_log
 from database.db import SessionLocal
 from database.lifecycle import append_lifecycle_event, current_work_order_status
-from database.models import WorkOrderRecord
+from database.models import TechnicianDevice, WorkOrderRecord
 from etl.extract import get_technician, resolve_cert_for_failure
 from etl.telemetry import generate_telemetry
 from etl.ml_client import predict_risk
@@ -69,9 +69,25 @@ celery_app.conf.beat_schedule = {
         "task": "tasks.escalate_stale_approvals",
         "schedule": crontab(minute="*/5"),
     },
+    "expire-stale-sms-prompts": {
+        "task": "tasks.expire_stale_sms_prompts",
+        "schedule": crontab(minute="*/5"),
+    },
 }
 
 logger = logging.getLogger(__name__)
+
+# Custom URL scheme the technician app registers (see
+# technician-mobile-app: android/.../AndroidManifest.xml intent-filter +
+# lib/services/deep_link_service.dart). Enterprise/sideload distribution
+# (Build Plan Phase 0 answer) — a custom scheme needs no domain
+# ownership or Android App Links verification, so it works the moment
+# the APK is installed, which a universal https:// link would not.
+DEEP_LINK_SCHEME = "maintainnexus"
+
+
+def _work_order_deep_link(work_order_id: str) -> str:
+    return f"{DEEP_LINK_SCHEME}://work-orders/{work_order_id}"
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +296,101 @@ def escalate_stale_approvals():
         return escalated
     finally:
         db.close()
+
+
+@celery_app.task
+def expire_stale_sms_prompts():
+    """Expire non-smartphone SMS reply prompts past their TTL (Build
+    Plan Phase 3 step 5) — same Beat cadence as escalate_stale_approvals,
+    reusing that pattern rather than inventing a new one."""
+    from api.notifications import expire_stale_prompts
+
+    expired = expire_stale_prompts()
+    if expired:
+        _write_audit_log("SMS_PROMPTS_EXPIRED", {"count": expired})
+    return expired
+
+
+# ---------------------------------------------------------------------------
+# Task: dispatch notification (SMS + push) — Build Plan Phase 2 step 3
+# ---------------------------------------------------------------------------
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
+def notify_dispatch(self, work_order_id: str):
+    """Notify the assigned technician that a work order has been
+    dispatched to them. Runs as a Celery task (not inline in the
+    approve-endpoint request) so a slow/unreachable SMS or push
+    provider never blocks the engineer's approve click.
+
+    - Always sends an SMS (the spec's "push ... SMS goes out in
+      parallel as a fallback" — everyone gets the fallback, not just
+      non-smartphone technicians).
+    - If the technician is flagged non-smartphone, the SMS is instead
+      the reply-code prompt ("Reply 1=Accept 3=Complete to 3391") and a
+      PendingSmsPrompt row is written so the inbound-reply webhook has
+      something to match against (Build Plan Phase 3 step 2).
+    - Sends a push in parallel if a device token is on file.
+    """
+    from api.notifications import create_pending_prompt
+    from api.technicians import get_technician_by_id
+    from etl.notifications_client import send_push, send_sms
+
+    db = SessionLocal()
+    try:
+        record = db.query(WorkOrderRecord).filter(WorkOrderRecord.id == work_order_id).first()
+    finally:
+        db.close()
+    if record is None:
+        logger.warning("notify_dispatch: work order %s not found", work_order_id)
+        return {"status": "not_found"}
+
+    tech = get_technician_by_id(record.technician_id)
+    if tech is None or not tech.get("phone_number"):
+        logger.warning("notify_dispatch: no phone number on file for technician %s", record.technician_id)
+        return {"status": "no_recipient"}
+
+    if tech.get("non_smartphone"):
+        message = f"MaintainNexus: {record.equipment_id} needs attention. Reply 1=Accept 3=Complete to {record.id}."
+        create_pending_prompt(
+            phone_number=tech["phone_number"],
+            work_order_id=record.id,
+            code_to_status={"1": "IN_PROGRESS", "3": "COMPLETED"},
+        )
+    else:
+        # The tappable deep link *is* tonight's "push notification opens
+        # straight to the work order" per the plan — FCM stays wired but
+        # inert (no Firebase project yet) until that's set up; SMS
+        # carries the same outcome without it.
+        link = _work_order_deep_link(record.id)
+        message = f"MaintainNexus: {record.equipment_id} work order {record.id} dispatched to you. Open: {link}"
+
+    sms_result = send_sms(tech["phone_number"], message, work_order_id=record.id)
+
+    db = SessionLocal()
+    try:
+        device = db.query(TechnicianDevice).filter(TechnicianDevice.technician_id == record.technician_id).first()
+    finally:
+        db.close()
+    push_result = None
+    if device is not None:
+        push_result = send_push(
+            device.device_token,
+            title="New work order",
+            body=f"{record.equipment_id} · {record.id}",
+            data={"work_order_id": record.id, "type": "work_order_dispatch"},
+            work_order_id=record.id,
+        )
+
+    _write_audit_log(
+        "DISPATCH_NOTIFIED",
+        {
+            "work_order_id": record.id,
+            "technician_id": record.technician_id,
+            "non_smartphone": bool(tech.get("non_smartphone")),
+            "sms_result": sms_result,
+            "push_sent": push_result is not None,
+        },
+    )
+    return {"status": "notified", "sms_result": sms_result, "push_attempted": push_result is not None}
 
 
 @celery_app.task

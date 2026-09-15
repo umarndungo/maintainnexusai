@@ -1,52 +1,145 @@
 "use client";
-
-import { FormEvent, useState } from "react";
+import { workspacePath } from "@/lib/workspace";
+import Image from "next/image";
+import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { PageLoading } from "@/components/page-loading";
-
-type Role = "engineer" | "supervisor" | "executive";
-const accounts: Record<Role, { label: string; detail: string; userId: string }> = {
-  engineer: { label: "Engineer", detail: "Review signals and approve work", userId: "engineer-demo" },
-  supervisor: { label: "Supervisor", detail: "Resolve escalations across stations", userId: "supervisor-demo" },
-  executive: { label: "Executive", detail: "See the value across the network", userId: "executive-demo" },
-};
-const roleVisuals: Record<Role, { eyebrow: string; title: string; detail: string; metric: string; metricLabel: string; bars: number[]; status: string }> = {
-  engineer: { eyebrow: "THE DEPOT, RIGHT NOW", title: "Small signals. Earlier action.", detail: "A rising vibration becomes a clear next step before the shift turns difficult.", metric: "0.87", metricLabel: "risk understood", bars: [28, 43, 35, 62, 78], status: "SIGNAL RECEIVED" },
-  supervisor: { eyebrow: "THE DEPOT, TOGETHER", title: "Nothing important falls between shifts.", detail: "Escalations gather in one place, ready for the person who can move them forward.", metric: "03", metricLabel: "items needing care", bars: [45, 36, 55, 48, 70], status: "QUEUE IN MOTION" },
-  executive: { eyebrow: "THE NETWORK, AT A GLANCE", title: "A clearer day, measured over time.", detail: "Reliability becomes a story you can see: less interruption, more confidence, more room to grow.", metric: "99.9%", metricLabel: "system readiness", bars: [44, 52, 58, 66, 82], status: "VALUE IN VIEW" },
-};
-
+import { Brand, Icon } from "@/components/ui";
 export default function LoginPage() {
   const router = useRouter();
-  const [role, setRole] = useState<Role>("engineer");
-  const [userId, setUserId] = useState(accounts.engineer.userId);
+  const [userId, setUserId] = useState("engineer-demo");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-
-  function selectRole(nextRole: Role) {
-    setRole(nextRole);
-    setUserId(accounts[nextRole].userId);
-    setError("");
-  }
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ user_id: userId }) });
-      if (!response.ok) { const result = await response.json().catch(() => ({ detail: "Login failed" })); throw new Error(result.detail ?? "Login failed"); }
-      const result = await response.json() as { user?: { role?: Role } };
-      const authenticatedRole = result.user?.role ?? role;
-      router.replace(authenticatedRole === "executive" ? "/executive" : "/dashboard");
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(
+          typeof result.detail === "string"
+            ? result.detail
+            : "Sign-in failed. Check your account ID and try again.",
+        );
+      router.replace(
+        workspacePath(result.user.role),
+      );
       router.refresh();
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Login failed");
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Sign-in unavailable. Try again.",
+      );
       setBusy(false);
     }
   }
-
-  const visual = roleVisuals[role];
-  if (busy) return <PageLoading />;
-  return <main className={`login-shell role-${role}`}><section className="login-panel"><div className="brand login-brand"><span className="brand-mark">M</span><span>MAINTAIN<span className="brand-accent">NEXUS</span></span></div><div className="login-heading"><span className="eyebrow">YOUR NEXT SHIFT, MADE CLEARER</span><h1>Welcome to the watch.</h1><p>See the small thing while it is still small. Choose a workspace to begin.</p></div><div className="role-switcher" role="tablist" aria-label="Choose workspace">{(Object.keys(accounts) as Role[]).map((item) => <button className={role === item ? "role-option selected" : "role-option"} key={item} onClick={() => selectRole(item)} role="tab" type="button"><strong>{accounts[item].label}</strong><span>{accounts[item].detail}</span></button>)}</div><form onSubmit={submit}><label>User ID<input autoComplete="username" onChange={(event) => setUserId(event.target.value)} value={userId} required /></label>{error && <div className="login-error">{error}</div>}<button className="login-submit" disabled={busy} type="submit">{busy ? "Opening..." : `Open ${accounts[role].label.toLowerCase()} workspace`}<span>-&gt;</span></button></form><div className="login-note"><span className="note-check">✓</span><span><strong>Demo access is ready</strong><small>Demo user IDs are prefilled. Sign-in uses the backend; password authentication is not available yet.</small></span></div></section><aside className="login-aside"><div className="aside-top"><span className="eyebrow">MAINTAINNEXUS / 01</span><span className="aside-status"><i />Systems watching</span></div><div className="aside-message"><span className="eyebrow">{visual.eyebrow}</span><strong>{visual.title}</strong><p>{visual.detail}</p></div><div className="signal-card"><div><span>{visual.status}</span><b>{visual.metric}</b></div><div className="signal-line">{visual.bars.map((height) => <i key={height} style={{ height: `${height}%` }} />)}</div><div className="signal-caption"><span>{visual.metricLabel}</span><strong>{role === "engineer" ? "People have time" : role === "supervisor" ? "The right work, visible" : "More room to grow"}</strong></div></div><div className="aside-footer"><span>{role === "engineer" ? "Notice" : role === "supervisor" ? "Resolve" : "See clearly"}</span><i /><span>{role === "engineer" ? "Understand" : role === "supervisor" ? "Coordinate" : "Compare"}</span><i /><span>{role === "engineer" ? "Act" : role === "supervisor" ? "Move forward" : "Lead"}</span></div></aside></main>;
+  return (
+    <main className="auth-shell">
+      <section className="auth-visual">
+        <Image
+          src="/images/auth-industrial.jpg"
+          alt="Petroleum storage tanks and industrial pipeline infrastructure"
+          fill
+          sizes="(max-width: 767px) 100vw, 50vw"
+          priority
+        />
+        <div className="auth-overlay" />
+        <div className="auth-brand">
+          <Brand />
+        </div>
+        <div className="auth-story">
+          <h2>Powering Kenya’s Progress Through Reliable Assets</h2>
+          <i className="brand-rule" />
+          <p>
+            Monitor, maintain and optimise critical assets for a safer, more
+            efficient and resilient energy future.
+          </p>
+          <div className="auth-values">
+            <span>
+              <Icon name="audit" />
+              Safer
+              <br />
+              Operations
+            </span>
+            <span>
+              <Icon name="reports" />
+              Higher
+              <br />
+              Availability
+            </span>
+            <span>
+              <Icon name="monitoring" />
+              Continuous
+              <br />
+              Monitoring
+            </span>
+          </div>
+        </div>
+        <small className="auth-copyright">
+          MaintainNexus AI · Assets. People. Uptime.
+        </small>
+      </section>
+      <section className="auth-form-side">
+        <div className="auth-company">
+          <Brand company />
+        </div>
+        <div className="auth-form-wrap">
+          <i className="brand-rule" />
+          <p className="auth-welcome">Welcome to</p>
+          <h1>
+            MaintainNexus <em>AI</em>
+          </h1>
+          <p className="auth-subtitle">
+            Sign in to access your operational workspace.
+          </p>
+          <form onSubmit={submit} aria-busy={busy}>
+            <label htmlFor="employee-id">Employee / demo account ID</label>
+            <div className="auth-input">
+              <Icon name="user" />
+              <input
+                id="employee-id"
+                name="user_id"
+                value={userId}
+                onChange={(event) => setUserId(event.target.value)}
+                autoComplete="username"
+                required
+                disabled={busy}
+                aria-describedby="account-help"
+              />
+            </div>
+            {error && (
+              <p className="operation-error" role="alert">
+                {error}
+              </p>
+            )}
+            <button className="auth-submit" disabled={busy} type="submit">
+              {busy ? "Signing in…" : "Sign in"}
+              <Icon name="arrow" />
+            </button>
+          </form>
+          <div className="auth-access-note" id="account-help">
+            <Icon name="audit" />
+            <div>
+              <strong>Demo access</strong>
+              <p>
+                Use engineer-demo, supervisor-demo, or executive-demo. Your
+                account determines your role and station access. Password and
+                corporate SSO sign-in are not available.
+              </p>
+            </div>
+          </div>
+          <div className="auth-help">
+            <strong>Need help?</strong>
+            <p>Contact your system administrator for account access.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
 }

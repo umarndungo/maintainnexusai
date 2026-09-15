@@ -87,6 +87,25 @@ async def create_work_order(wo: WorkOrderCreate):
     # Persist to PostgreSQL
     db = SessionLocal()
     try:
+        # Guard against a duplicate alert_task_id at the endpoint itself —
+        # not just upstream in tasks._find_existing_work_order_by_task_id,
+        # which only protects the one automated caller (the Celery
+        # pipeline). Any other caller hitting this endpoint twice for the
+        # same alert would otherwise create two work orders for it.
+        # etl/load.dispatch_work_order already expects and handles this
+        # exact 409 (02-BACKEND-GUIDE.md §3).
+        if wo.alert_task_id is not None:
+            existing = (
+                db.query(WorkOrderRecord)
+                .filter(WorkOrderRecord.alert_task_id == wo.alert_task_id)
+                .first()
+            )
+            if existing is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"A work order already exists for alert_task_id {wo.alert_task_id!r}: {existing.id}",
+                )
+
         record = WorkOrderRecord(
             id=wo_id,
             equipment_id=wo.equipment_id,
@@ -184,6 +203,16 @@ def _transition(db, record, to_status: str, actor: dict, note: str):
                 started_at=event.timestamp,
                 cause_alert_id=record.alert_task_id,
             ))
+        # Fire the dispatch notification (SMS + push) — Build Plan Phase 2
+        # step 3. Safe to enqueue before this transaction commits: the
+        # task only reads WorkOrderRecord's base columns (equipment_id,
+        # technician_id, part_number), which were already committed when
+        # the record was first created. Deferred import: tasks.py imports
+        # from api.* at module load, so importing it back here at module
+        # load would cycle.
+        from tasks import notify_dispatch
+
+        notify_dispatch.delay(record.id)
     elif to_status == "COMPLETED":
         window = db.query(DowntimeWindow).filter(
             DowntimeWindow.work_order_id == record.id,
@@ -196,7 +225,17 @@ def _transition(db, record, to_status: str, actor: dict, note: str):
     return event
 
 
-def _action(work_order_id: str, actor: dict, to_status: str, note: str):
+def advance_work_order_status(work_order_id: str, actor: dict, to_status: str, note: str):
+    """Apply one lifecycle transition and return the usual status dict.
+
+    This is the single lifecycle-event writer every status change goes
+    through — the three HTTP actions below, the dispatch-notification
+    task, *and* the inbound-SMS-reply handler (api/notifications.py)
+    all call this, so a technician replying "1" from a feature phone
+    produces exactly the same kind of audit-chained event as tapping
+    the button in the app (Build Plan Phase 3 step 4: "no separate code
+    path, so the audit trail doesn't fork").
+    """
     db = SessionLocal()
     try:
         record = _get_work_order(db, work_order_id)
@@ -213,17 +252,52 @@ def _action(work_order_id: str, actor: dict, to_status: str, note: str):
 
 @router.patch("/work-orders/{work_order_id}/approve")
 async def approve_work_order(work_order_id: str, actor: Annotated[dict, Depends(require_roles("engineer", "supervisor"))]):
-    return _action(work_order_id, actor, "APPROVED", "Approved by authorized reviewer")
+    return advance_work_order_status(work_order_id, actor, "APPROVED", "Approved by authorized reviewer")
 
 
 @router.patch("/work-orders/{work_order_id}/reject")
 async def reject_work_order(work_order_id: str, actor: Annotated[dict, Depends(require_roles("engineer", "supervisor"))]):
-    return _action(work_order_id, actor, "REJECTED", "Rejected by authorized reviewer")
+    return advance_work_order_status(work_order_id, actor, "REJECTED", "Rejected by authorized reviewer")
 
 
 @router.patch("/work-orders/{work_order_id}/escalate")
 async def escalate_work_order(work_order_id: str, actor: Annotated[dict, Depends(require_roles("supervisor", "internal"))]):
-    return _action(work_order_id, actor, "ESCALATED", "Approval exceeded SLA")
+    return advance_work_order_status(work_order_id, actor, "ESCALATED", "Approval exceeded SLA")
+
+
+class WorkOrderComplete(BaseModel):
+    """Close-out payload — Mobile spec Mockup 5 (notes, parts used, photo)."""
+
+    notes: str | None = None
+    parts_used: list[str] | None = None
+    photo_object_path: str | None = None
+
+
+@router.patch("/work-orders/{work_order_id}/complete")
+async def complete_work_order(
+    work_order_id: str,
+    body: WorkOrderComplete,
+    actor: Annotated[dict, Depends(require_roles("technician", "engineer", "supervisor"))],
+):
+    """Close out a work order: notes/parts/photo captured together as the
+    audit record, per the spec's close-out screen. ``photo_object_path``
+    comes from a prior call to the signed-upload-url endpoint
+    (api/notifications.py) followed by the client's direct upload to
+    Supabase Storage — this call only records where it landed."""
+    result = advance_work_order_status(work_order_id, actor, "COMPLETED", "Closed out with notes/parts/photo")
+    db = SessionLocal()
+    try:
+        record = _get_work_order(db, work_order_id)
+        if body.notes is not None:
+            record.completion_notes = body.notes
+        if body.parts_used is not None:
+            record.parts_used = ", ".join(body.parts_used)
+        if body.photo_object_path is not None:
+            record.photo_object_path = body.photo_object_path
+        db.commit()
+    finally:
+        db.close()
+    return result
 
 
 @router.get("/work-orders/{work_order_id}/lifecycle")

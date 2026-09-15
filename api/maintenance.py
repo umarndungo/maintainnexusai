@@ -203,15 +203,27 @@ async def list_recent_alerts():
         )
 
         alerts = []
+        # Dedup by task_id (02-BACKEND-GUIDE.md §3) — a retried Celery task
+        # or a direct re-POST of the same alert writes a second
+        # ALERT_RECEIVED row for the same task_id; the newest one wins
+        # since `records` is already newest-first. A row with no task_id
+        # can't be deduplicated against anything, so it's always kept.
+        seen_task_ids = set()
         for record in records:
             try:
                 payload = json.loads(record.payload)
             except json.JSONDecodeError:
                 continue
 
+            task_id = payload.get("task_id")
+            if task_id is not None:
+                if task_id in seen_task_ids:
+                    continue
+                seen_task_ids.add(task_id)
+
             alerts.append(
                 {
-                    "task_id": payload.get("task_id"),
+                    "task_id": task_id,
                     "equipment_id": payload.get("equipment_id"),
                     "part_number": payload.get("part_number"),
                     "severity": payload.get("severity"),
