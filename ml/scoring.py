@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 import json
 from typing import Any, Dict
@@ -7,6 +8,7 @@ import pandas as pd
 import shap
 import xgboost as xgb
 
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_DIR = BASE_DIR / "models"
@@ -28,9 +30,37 @@ FEATURES = METADATA["features"]
 CATEGORICAL_FEATURES = METADATA["categorical_features"]
 
 
-# Explicit SHAP TreeExplainer.
-# For this XGBoost model, SHAP explains the model's raw margin.
-EXPLAINER = shap.TreeExplainer(MODEL)
+def _build_explainer() -> "shap.TreeExplainer | None":
+    """Best-effort SHAP explainer construction.
+
+    This model's saved base_score is a bracketed-string ("[3.576514E-2]")
+    -- the format whichever xgboost trained/saved model.json used -- and
+    shap's TreeExplainer parses that field itself (XGBTreeModelLoader,
+    bypassing xgboost's own loader), not the numeric-string format shap
+    releases installable on this deployment's Python 3.10 base image
+    understand (shap>=0.50.0, which does handle it, requires Python
+    >=3.11). Downgrading xgboost doesn't help either -- the file's
+    on-disk format was fixed at save time regardless of which xgboost
+    version loads it for inference now.
+
+    Explanations are an added-value feature, not something the alert /
+    decision-engine / work-order pipeline depends on, so a failure here
+    must not take the whole API down (as it did before this guard existed
+    -- api/ml.py imports this module at startup). score_telemetry() below
+    degrades to an empty explanation rather than crashing.
+    """
+    try:
+        return shap.TreeExplainer(MODEL)
+    except Exception:  # noqa: BLE001 - genuinely any construction failure should degrade, not crash the API
+        logger.warning(
+            "SHAP TreeExplainer unavailable for this model/environment combination; "
+            "predictions will continue without explanations.",
+            exc_info=True,
+        )
+        return None
+
+
+EXPLAINER = _build_explainer()
 
 
 def _json_number(value: Any) -> float:
@@ -125,8 +155,27 @@ def score_telemetry(telemetry: Dict[str, Any]) -> Dict[str, Any]:
     failure_predicted = probability >= THRESHOLD
 
     # ---------------------------------------------------------
-    # SHAP LOCAL EXPLANATION
+    # SHAP LOCAL EXPLANATION -- skipped when _build_explainer()
+    # couldn't construct one (see its docstring); a prediction must
+    # still come back, just without the increasing/reducing feature
+    # breakdown.
     # ---------------------------------------------------------
+
+    if EXPLAINER is None:
+        return {
+            "failure_probability": round(probability, 4),
+            "failure_predicted": bool(failure_predicted),
+            "risk_level": risk_level,
+            "threshold": THRESHOLD,
+            "prediction_horizon_hours": 6,
+            "target": TARGET,
+            "explanation": {
+                "method": "unavailable",
+                "output_space": None,
+                "increasing_risk": [],
+                "reducing_risk": [],
+            },
+        }
 
     shap_values = _extract_shap_values(row)
 

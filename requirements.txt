@@ -14,7 +14,13 @@ scikit-learn
 pytest
 prometheus-client
 xgboost
-shap
+# Pinned to the highest release installable on this image's python:3.10-slim
+# base (shap>=0.50.0 requires Python >=3.11) so a fresh build always
+# resolves the same version rather than drifting. This version's
+# TreeExplainer cannot parse this model's base_score field (see
+# ml/scoring.py's _build_explainer for why and how that's handled without
+# crashing the API) -- see that comment before bumping either pin.
+shap==0.49.1
 Faker
 python-multipart
 # Notifications providers (Build Plan Phase 2/3) — safe to install even
