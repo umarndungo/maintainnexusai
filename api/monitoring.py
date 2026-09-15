@@ -1,10 +1,12 @@
 """
 Equipment Monitoring Module — Live equipment readings for the web UI.
 
-Every telemetry reading Celery scores (see ``tasks._telemetry_check_payload``)
-is written to the append-only ``AuditLog`` as a ``TELEMETRY_CHECK`` event, so
-this module reconstructs "what does equipment monitoring look like right
-now" by reading that log rather than needing a dedicated telemetry table.
+Reads from ``EquipmentReading`` — the table the telemetry ETL's Load
+step (etl/telemetry_pipeline.py) writes to *before* ML scoring runs,
+then updates in place once a score comes back (etl/readings_client.py).
+This is the single structured source of "what does equipment monitoring
+look like right now" — replacing the previous approach of re-parsing
+``AuditLog`` JSON rows on every request.
 
 Endpoints
 ---------
@@ -12,16 +14,21 @@ Endpoints
     The latest reading for every piece of equipment that has reported.
 ``GET /api/v1/monitoring/equipment/{equipment_id}/history``
     The full recorded reading history for one piece of equipment.
+``POST /api/v1/monitoring/readings`` (internal-only)
+    ETL Load step: persist one validated/transformed reading, unscored.
+``PATCH /api/v1/monitoring/readings/{id}`` (internal-only)
+    Attach an ML score to an already-loaded reading.
 """
 
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
-from api.auth import require_roles
+from api.auth import require_internal_service, require_roles
 from database.db import SessionLocal
-from database.models import AuditLog
+from database.models import EquipmentReading
 from etl.telemetry import ALERT_CREATION_THRESHOLD
 from ml.scoring import METADATA
 
@@ -31,6 +38,14 @@ router = APIRouter(
     dependencies=[Depends(require_roles("engineer", "supervisor"))],
 )
 
+# Separate router for the ETL Load/score-update calls — internal-service
+# gated like /ml/predict-risk, not human-role gated like the router above.
+internal_router = APIRouter(
+    prefix="/api/v1/monitoring",
+    tags=["Monitoring"],
+    dependencies=[Depends(require_internal_service)],
+)
+
 # The model's own validation-tuned threshold (~0.12) — below this, a reading
 # is NORMAL; at or above it (but below the alert-creation gate), it's
 # APPROACHING_THRESHOLD. See ALERT_CREATION_THRESHOLD's docstring in
@@ -38,10 +53,10 @@ router = APIRouter(
 WARNING_THRESHOLD = float(METADATA["threshold"])
 PREDICTION_HORIZON_HOURS = 6
 
-# How many TELEMETRY_CHECK rows to scan. AuditLog.payload is a JSON string
-# column (no per-equipment index), so filtering happens in Python after a
-# bounded scan — fine at this app's demo/hackathon scale, but the first
-# thing to revisit if the audit log grows large enough for this to matter.
+# How many rows list_equipment scans to find the latest per equipment_id.
+# Now backed by an index (equipment_id, received_at) rather than a raw
+# JSON-string table scan, but still a bounded read rather than an
+# unbounded one — fine at this app's demo/hackathon scale.
 SCAN_LIMIT = 2000
 EQUIPMENT_HISTORY_LIMIT = 200
 
@@ -58,7 +73,7 @@ def _thresholds() -> dict:
         "failure_probability": ALERT_CREATION_THRESHOLD,
         "warning_probability": WARNING_THRESHOLD,
         "prediction_horizon_hours": PREDICTION_HORIZON_HOURS,
-        "source": "audit_log+model_metadata",
+        "source": "equipment_readings+model_metadata",
         "sensor_limits": None,
     }
 
@@ -73,41 +88,37 @@ def _state_for(risk_probability: float | None) -> str:
     return "NORMAL"
 
 
-def _reading_from_row(record: AuditLog) -> dict | None:
-    """Turn one TELEMETRY_CHECK audit row into an EquipmentReading, or
-    ``None`` if the row doesn't carry a usable telemetry payload."""
+def _reading_from_row(record: EquipmentReading) -> dict:
+    """Turn one EquipmentReading row into the API's reading shape —
+    same field names the frontend already consumed when this was
+    reconstructed from audit_log JSON, so the response contract doesn't
+    change even though the source table did."""
     try:
-        payload = json.loads(record.payload)
+        telemetry = json.loads(record.telemetry) if record.telemetry else {}
     except json.JSONDecodeError:
-        return None
+        telemetry = {}
 
-    telemetry = payload.get("telemetry") or {}
-    equipment_id = payload.get("equipment_id") or telemetry.get("equipment_id")
-    if not equipment_id:
-        return None
-
-    risk_probability = payload.get("risk_probability")
+    risk_probability = record.risk_probability
     prediction = None
     if risk_probability is not None:
-        risk_probability = float(risk_probability)
         prediction = {
             "failure_probability": round(risk_probability, 4),
             "failure_predicted": risk_probability >= ALERT_CREATION_THRESHOLD,
-            "risk_level": payload.get("risk_level") or payload.get("health_status") or "LOW",
+            "risk_level": record.risk_level or "LOW",
             "threshold": ALERT_CREATION_THRESHOLD,
-            "prediction_horizon_hours": payload.get("prediction_horizon_hours", PREDICTION_HORIZON_HOURS),
+            "prediction_horizon_hours": PREDICTION_HORIZON_HOURS,
         }
 
     state = _state_for(risk_probability)
     return {
         "id": record.id,
-        "equipment_id": equipment_id,
-        "station_id": payload.get("station_id") or telemetry.get("station_id"),
+        "equipment_id": record.equipment_id,
+        "station_id": record.station_id,
         "telemetry": telemetry,
         "prediction": prediction,
         "state": state,
         "evaluation_reason": _EVALUATION_REASONS[state],
-        "received_at": record.timestamp.isoformat(),
+        "received_at": record.received_at.isoformat(),
     }
 
 
@@ -131,9 +142,8 @@ async def list_equipment(user: Annotated[dict, Depends(require_roles("engineer",
     db = SessionLocal()
     try:
         rows = (
-            db.query(AuditLog)
-            .filter(AuditLog.event_name == "TELEMETRY_CHECK")
-            .order_by(AuditLog.timestamp.desc())
+            db.query(EquipmentReading)
+            .order_by(EquipmentReading.received_at.desc())
             .limit(SCAN_LIMIT)
             .all()
         )
@@ -142,15 +152,15 @@ async def list_equipment(user: Annotated[dict, Depends(require_roles("engineer",
 
     latest_by_equipment: dict[str, dict] = {}
     for record in rows:  # newest first — keep only the first (latest) row seen per equipment
-        reading = _reading_from_row(record)
-        if reading is None or reading["equipment_id"] in latest_by_equipment:
+        if record.equipment_id in latest_by_equipment:
             continue
+        reading = _reading_from_row(record)
         if not _accessible(reading, user):
             continue
         latest_by_equipment[reading["equipment_id"]] = reading
 
     equipment = sorted(latest_by_equipment.values(), key=lambda reading: reading["equipment_id"])
-    return {"equipment": equipment, "thresholds": _thresholds(), "source": "audit_log"}
+    return {"equipment": equipment, "thresholds": _thresholds(), "source": "equipment_readings"}
 
 
 @router.get("/equipment/{equipment_id}/history", status_code=status.HTTP_200_OK)
@@ -162,22 +172,75 @@ async def equipment_history(
     db = SessionLocal()
     try:
         rows = (
-            db.query(AuditLog)
-            .filter(AuditLog.event_name == "TELEMETRY_CHECK")
-            .order_by(AuditLog.timestamp.desc())
-            .limit(SCAN_LIMIT)
+            db.query(EquipmentReading)
+            .filter(EquipmentReading.equipment_id == equipment_id)
+            .order_by(EquipmentReading.received_at.desc())
+            .limit(EQUIPMENT_HISTORY_LIMIT)
             .all()
         )
     finally:
         db.close()
 
-    readings = []
-    for record in reversed(rows):  # oldest -> newest, matching the frontend trend chart's expectation
-        reading = _reading_from_row(record)
-        if reading is None or reading["equipment_id"] != equipment_id:
-            continue
-        if not _accessible(reading, user):
-            continue
-        readings.append(reading)
+    readings = [_reading_from_row(record) for record in reversed(rows)]  # oldest -> newest
+    readings = [r for r in readings if _accessible(r, user)]
 
-    return {"readings": readings[-EQUIPMENT_HISTORY_LIMIT:], "thresholds": _thresholds()}
+    return {"readings": readings, "thresholds": _thresholds()}
+
+
+# ---------------------------------------------------------------------------
+# ETL Load step (called from etl/readings_client.py, before ML scoring)
+# ---------------------------------------------------------------------------
+
+class ReadingCreate(BaseModel):
+    equipment_id: str
+    asset_type: str
+    station_id: str | None = None
+    telemetry: dict
+
+
+@internal_router.post("/readings", status_code=status.HTTP_201_CREATED)
+async def create_reading(body: ReadingCreate):
+    """Persist one validated/transformed reading, unscored — the ETL
+    Load step. Called before ML is ever invoked, so the reading survives
+    even if scoring subsequently fails."""
+    db = SessionLocal()
+    try:
+        record = EquipmentReading(
+            equipment_id=body.equipment_id,
+            asset_type=body.asset_type,
+            station_id=body.station_id,
+            telemetry=json.dumps(body.telemetry),
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+        return {"reading_id": record.id}
+    finally:
+        db.close()
+
+
+class ReadingScoreUpdate(BaseModel):
+    risk_probability: float
+    risk_level: str | None = None
+    model_version: str | None = None
+    top_features: list[str] = []
+    alert_created: bool = False
+
+
+@internal_router.patch("/readings/{reading_id}", status_code=status.HTTP_200_OK)
+async def update_reading_score(reading_id: int, body: ReadingScoreUpdate):
+    """Attach an ML score to an already-loaded reading."""
+    db = SessionLocal()
+    try:
+        record = db.query(EquipmentReading).filter(EquipmentReading.id == reading_id).first()
+        if record is None:
+            raise HTTPException(status_code=404, detail="Reading not found")
+        record.risk_probability = body.risk_probability
+        record.risk_level = body.risk_level
+        record.model_version = body.model_version
+        record.top_features = json.dumps(body.top_features)
+        record.alert_created = body.alert_created
+        db.commit()
+        return {"status": "updated", "reading_id": reading_id}
+    finally:
+        db.close()

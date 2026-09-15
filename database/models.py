@@ -10,7 +10,7 @@ Defines the two core tables used by MaintainNexus:
                      payload that triggered it).
 """
 
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Index
+from sqlalchemy import Boolean, Column, String, Integer, DateTime, Float, ForeignKey, Text, Index
 from sqlalchemy.orm import declarative_base
 import datetime
 
@@ -175,4 +175,38 @@ class PendingSmsPrompt(Base):
 
     __table_args__ = (
         Index("ix_pending_sms_prompt_phone", "phone_number", "resolved_at"),
+    )
+
+
+class EquipmentReading(Base):
+    """One telemetry reading, ETL-loaded *before* ML ever sees it.
+
+    Row lifecycle: inserted unscored by the telemetry ETL's Load step
+    (etl/telemetry_pipeline.py), then updated in place once ML scoring
+    returns a result. A mutable operational table, not part of the hash
+    chain — same pattern as WorkOrderRecord's mutable completion_notes
+    column; audit_logs remains the append-only, hash-chained trail and
+    is written independently of this table.
+
+    This is the single structured source api.monitoring reads from —
+    replaces re-parsing audit_logs JSON for the equipment-monitoring
+    endpoints.
+    """
+
+    __tablename__ = "equipment_readings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    equipment_id = Column(String, nullable=False)
+    asset_type = Column(String, nullable=False)  # PUMP / VALVE / LOADING_ARM
+    station_id = Column(String, nullable=True)
+    telemetry = Column(Text, nullable=False)  # JSON: the raw + enriched reading
+    risk_probability = Column(Float, nullable=True)  # NULL until ML has scored it
+    risk_level = Column(String, nullable=True)
+    model_version = Column(String, nullable=True)
+    top_features = Column(Text, nullable=True)  # JSON list
+    alert_created = Column(Boolean, nullable=False, default=False)
+    received_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_equipment_readings_equipment_id_received_at", "equipment_id", "received_at"),
     )

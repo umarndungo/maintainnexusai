@@ -24,6 +24,7 @@ from api.equipment import router as equipment_router
 from api.maintenance import router as maintenance_router
 from api.ml import router as ml_router
 from api.monitoring import router as monitoring_router
+from api.monitoring import internal_router as monitoring_internal_router
 from api.notifications import router as notifications_router
 from api.notifications import public_router as notifications_public_router
 from api.auth import get_current_user
@@ -115,6 +116,7 @@ app.include_router(equipment_router)
 app.include_router(maintenance_router)
 app.include_router(ml_router)
 app.include_router(monitoring_router)
+app.include_router(monitoring_internal_router)
 app.include_router(notifications_router)
 app.include_router(notifications_public_router)
 app.include_router(technicians_router)
