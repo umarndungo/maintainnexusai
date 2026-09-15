@@ -10,6 +10,7 @@ export function LogoutButton() {
   async function logout() {
     if (busy) return;
     setBusy(true);
+    window.dispatchEvent(new Event("session-signout"));
     setError("");
     try {
       const response = await fetch("/api/auth/logout", {

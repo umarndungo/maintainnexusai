@@ -3,6 +3,7 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { workspacePath, workspaceTitle } from "@/lib/workspace";
 import { usePathname } from "next/navigation";
 import Link from "./navigation-link";
+import { SessionRenewal } from "./session-renewal";
 import { LiveUpdates } from "./live-updates";
 import { ProfileMenu } from "./profile-menu";
 import { Brand, Icon, type IconName } from "./ui";
@@ -144,7 +145,7 @@ export function AppShell({
             <span>{user.station_ids.join(", ") || "Network operations"}</span>
           </div>
           <div className="app-topbar-right">
-            <LiveUpdates />
+            <LiveUpdates /><SessionRenewal />
             <ProfileMenu user={user} initials={initials} />
           </div>
         </header>
