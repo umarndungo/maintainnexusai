@@ -17,7 +17,7 @@ from api.technicians import TECHNICIANS
 from database.auditing import GENESIS_HASH, compute_audit_hash
 from database.db import SessionLocal
 from database.lifecycle import compute_lifecycle_hash, current_work_order_status
-from database.models import AuditLog, DowntimeWindow, WorkOrderLifecycleEvent, WorkOrderRecord
+from database.models import AuditLog, DowntimeWindow, EquipmentReading, WorkOrderLifecycleEvent, WorkOrderRecord
 from api.auth import get_current_user
 
 router = APIRouter(
@@ -25,6 +25,11 @@ router = APIRouter(
     tags=["Dashboard"],
     dependencies=[Depends(require_roles("technician", "engineer", "executive", "supervisor"))],
 )
+
+# How many EquipmentReading rows _accessible_equipment_ids scans to find
+# the latest per equipment_id — same bound as api.monitoring.SCAN_LIMIT,
+# duplicated rather than imported to keep the two modules independent.
+_SCAN_LIMIT = 2000
 
 
 def _normalize_timestamp(dt: datetime) -> datetime:
@@ -35,10 +40,73 @@ def _normalize_timestamp(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
+def _accessible_equipment_ids(db, user: dict) -> set[str] | None:
+    """Which equipment_ids this user may see summary/audit data for.
+
+    ``None`` means "no restriction" (supervisor/executive — same
+    cross-station roles api.monitoring._accessible already exempts).
+    Otherwise: equipment in the user's own stations, plus any equipment
+    whose latest reading carries no station_id at all — today's demo
+    telemetry (etl.telemetry.generate_telemetry) rarely sets one, so
+    treating "unknown station" as hidden would leave a station-scoped
+    engineer's dashboard empty. Same rule as api.monitoring._accessible,
+    just computed as a set of ids up front rather than per-row.
+    """
+    if user["role"] in {"supervisor", "executive"}:
+        return None
+    user_stations = set(user.get("station_ids") or [])
+    rows = (
+        db.query(EquipmentReading.equipment_id, EquipmentReading.station_id)
+        .order_by(EquipmentReading.received_at.desc())
+        .limit(_SCAN_LIMIT)
+        .all()
+    )
+    seen: set[str] = set()
+    allowed: set[str] = set()
+    for equipment_id, station_id in rows:
+        if equipment_id in seen:  # only the latest reading per equipment counts
+            continue
+        seen.add(equipment_id)
+        if station_id is None or station_id in user_stations:
+            allowed.add(equipment_id)
+    return allowed
+
+
+def _load_payload(record: AuditLog) -> dict:
+    """AuditLog.payload is a JSON string; malformed rows degrade to an
+    empty dict rather than raising, matching the try/except pattern the
+    rest of this endpoint already uses per-row."""
+    try:
+        return json.loads(record.payload)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _audit_log_equipment_id(payload: dict) -> str | None:
+    """Best-effort extraction of the equipment_id an audit row concerns —
+    payload shapes vary by event_name (see tasks.py/etl.telemetry's
+    various _write_audit_log calls), so this checks the handful of shapes
+    actually produced rather than assuming one schema."""
+    if payload.get("equipment_id"):
+        return payload["equipment_id"]
+    for nested_key in ("alert", "telemetry"):
+        nested = payload.get(nested_key)
+        if isinstance(nested, dict) and nested.get("equipment_id"):
+            return nested["equipment_id"]
+    return None
+
+
 @router.get("/summary", status_code=status.HTTP_200_OK)
-async def get_dashboard_summary():
+async def get_dashboard_summary(user: Annotated[dict, Depends(get_current_user)]):
     """
     Return aggregated dashboard data for the Flutter UI.
+
+    Every figure is scoped to the caller's accessible equipment — see
+    ``_accessible_equipment_ids``. A supervisor/executive sees everything
+    (unchanged from before); a station-scoped engineer/technician now
+    sees only their stations' equipment, plus anything with no recorded
+    station, matching api.monitoring's existing visibility rule instead
+    of a dashboard-only global view.
 
     Returns
     -------
@@ -51,24 +119,26 @@ async def get_dashboard_summary():
     """
     db = SessionLocal()
     try:
-        work_order_count = db.query(WorkOrderRecord).count()
-        alert_count = (
-            db.query(AuditLog)
-            .filter(AuditLog.event_name == "ALERT_RECEIVED")
-            .count()
-        )
+        allowed = _accessible_equipment_ids(db, user)
+
+        work_order_query = db.query(WorkOrderRecord)
+        if allowed is not None:
+            work_order_query = work_order_query.filter(WorkOrderRecord.equipment_id.in_(allowed))
+        work_order_count = work_order_query.count()
+
+        # AuditLog has no equipment_id column (payload shapes vary — see
+        # _audit_log_equipment_id), so these are scoped in Python after
+        # loading rather than filtered in SQL like the queries above.
+        alert_rows = db.query(AuditLog).filter(AuditLog.event_name == "ALERT_RECEIVED").all()
+        alert_rows = [
+            r for r in alert_rows
+            if allowed is None or _audit_log_equipment_id(_load_payload(r)) in allowed | {None}
+        ]
+        alert_count = len(alert_rows)
 
         now = datetime.now(timezone.utc)
         recent_window = now - timedelta(hours=24)
-        recent_alert_rows = (
-            db.query(AuditLog)
-            .filter(
-                AuditLog.event_name == "ALERT_RECEIVED",
-                AuditLog.timestamp >= recent_window,
-            )
-            .order_by(AuditLog.timestamp.desc())
-            .all()
-        )
+        recent_alert_rows = [r for r in alert_rows if _normalize_timestamp(r.timestamp) >= recent_window]
 
         incident_equipment_ids = set()
         for record in recent_alert_rows:
@@ -80,11 +150,10 @@ async def get_dashboard_summary():
 
         incident_count = len(incident_equipment_ids)
 
-        recent_work_orders = (
-            db.query(WorkOrderRecord)
-            .filter(WorkOrderRecord.created_at >= recent_window)
-            .all()
-        )
+        recent_work_order_query = db.query(WorkOrderRecord).filter(WorkOrderRecord.created_at >= recent_window)
+        if allowed is not None:
+            recent_work_order_query = recent_work_order_query.filter(WorkOrderRecord.equipment_id.in_(allowed))
+        recent_work_orders = recent_work_order_query.all()
         current_statuses = {
             record.id: current_work_order_status(db, record.id)
             for record in recent_work_orders
@@ -93,10 +162,10 @@ async def get_dashboard_summary():
             status != "COMPLETED" for status in current_statuses.values()
         )
 
-        external_source_alerts = (
-            db.query(AuditLog)
-            .filter(AuditLog.event_name == "EXTERNAL_SOURCE_REQUIRED")
-            .count()
+        external_source_rows = db.query(AuditLog).filter(AuditLog.event_name == "EXTERNAL_SOURCE_REQUIRED").all()
+        external_source_alerts = sum(
+            1 for r in external_source_rows
+            if allowed is None or _audit_log_equipment_id(_load_payload(r)) in allowed | {None}
         )
 
         health_checks = []
@@ -104,7 +173,7 @@ async def get_dashboard_summary():
             db.query(AuditLog)
             .filter(AuditLog.event_name == "TELEMETRY_CHECK")
             .order_by(AuditLog.timestamp.desc())
-            .limit(5)
+            .limit(5 if allowed is None else 200)  # scoped case needs more candidates before Python-side filtering+limit
             .all()
         )
         for record in health_check_rows:
@@ -114,9 +183,12 @@ async def get_dashboard_summary():
                 continue
 
             telemetry = payload.get("telemetry", {})
+            equipment_id = telemetry.get("equipment_id")
+            if allowed is not None and equipment_id is not None and equipment_id not in allowed:
+                continue
             health_checks.append(
                 {
-                    "equipment_id": telemetry.get("equipment_id"),
+                    "equipment_id": equipment_id,
                     "temperature": telemetry.get("temperature"),
                     "vibration": telemetry.get("vibration"),
                     "installation_age_hours": telemetry.get("installation_age_hours"),
@@ -125,17 +197,18 @@ async def get_dashboard_summary():
                     "checked_at": record.timestamp.isoformat(),
                 }
             )
+            if len(health_checks) == 5:
+                break
 
         # Real downtime, from the same DowntimeWindow rows opened/closed by
         # work-order lifecycle transitions (see database/lifecycle.py) —
         # not a status/age heuristic. Matches the window /executive-summary
         # already uses, scoped to the same recent_window as the rest of
         # this endpoint's "recent" figures.
-        recent_downtime_windows = (
-            db.query(DowntimeWindow)
-            .filter(DowntimeWindow.started_at >= recent_window)
-            .all()
-        )
+        recent_downtime_query = db.query(DowntimeWindow).filter(DowntimeWindow.started_at >= recent_window)
+        if allowed is not None:
+            recent_downtime_query = recent_downtime_query.filter(DowntimeWindow.equipment_id.in_(allowed))
+        recent_downtime_windows = recent_downtime_query.all()
         now = datetime.now(timezone.utc)
         downtime_minutes = sum(
             (
@@ -194,16 +267,25 @@ async def get_dashboard_summary():
 
 
 @router.get("/audit-logs", status_code=status.HTTP_200_OK)
-async def get_audit_logs():
-    """Return recent audit log entries for the UI insights screen."""
+async def get_audit_logs(user: Annotated[dict, Depends(get_current_user)]):
+    """Return recent audit log entries for the UI insights screen, scoped
+    to the caller's accessible equipment — same rule as /summary above.
+    Rows with no identifiable equipment_id (see _audit_log_equipment_id)
+    stay visible to everyone, same as an equipment reading with no
+    station_id."""
     db = SessionLocal()
     try:
-        records = (
-            db.query(AuditLog)
-            .order_by(AuditLog.timestamp.desc())
-            .limit(50)
-            .all()
-        )
+        allowed = _accessible_equipment_ids(db, user)
+        query = db.query(AuditLog).order_by(AuditLog.timestamp.desc())
+        # Scoped callers need more candidates scanned before Python-side
+        # filtering narrows it down to 50 — unscoped (supervisor/executive)
+        # keeps the cheap SQL-side limit.
+        records = query.limit(50 if allowed is None else 1000).all()
+        if allowed is not None:
+            records = [
+                r for r in records
+                if _audit_log_equipment_id(_load_payload(r)) in allowed | {None}
+            ][:50]
         return [
             {
                 "id": record.id,

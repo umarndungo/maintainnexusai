@@ -28,6 +28,14 @@ def dashboard_db(monkeypatch):
     return session_factory
 
 
+def _supervisor():
+    """get_dashboard_summary now takes the caller's user for station
+    scoping (see api.dashboard._accessible_equipment_ids) — a supervisor
+    is unscoped, so these downtime-focused tests keep seeing everything,
+    same as before that parameter existed."""
+    return {"id": "supervisor-demo", "role": "supervisor", "station_ids": []}
+
+
 def _seed_work_order(session, work_order_id: str, equipment_id: str, created_at: datetime):
     session.add(
         WorkOrderRecord(
@@ -58,7 +66,7 @@ def test_summary_downtime_matches_real_downtime_windows(dashboard_db):
     session.commit()
     session.close()
 
-    result = asyncio.run(get_dashboard_summary())
+    result = asyncio.run(get_dashboard_summary(_supervisor()))
 
     assert result["downtime_minutes"] == pytest.approx(45.0, abs=0.1)
     assert result["mean_repair_time_minutes"] == pytest.approx(45.0, abs=0.1)
@@ -82,7 +90,7 @@ def test_summary_counts_open_downtime_window_up_to_now(dashboard_db):
     session.commit()
     session.close()
 
-    result = asyncio.run(get_dashboard_summary())
+    result = asyncio.run(get_dashboard_summary(_supervisor()))
 
     assert result["downtime_minutes"] == pytest.approx(30.0, abs=0.5)
 
@@ -90,7 +98,7 @@ def test_summary_counts_open_downtime_window_up_to_now(dashboard_db):
 def test_summary_reports_zero_downtime_with_no_windows(dashboard_db):
     from api.dashboard import get_dashboard_summary
 
-    result = asyncio.run(get_dashboard_summary())
+    result = asyncio.run(get_dashboard_summary(_supervisor()))
 
     assert result["downtime_minutes"] == 0.0
     assert result["mean_repair_time_minutes"] == 0.0
@@ -115,6 +123,6 @@ def test_summary_ignores_downtime_windows_outside_the_recent_cutoff(dashboard_db
     session.commit()
     session.close()
 
-    result = asyncio.run(get_dashboard_summary())
+    result = asyncio.run(get_dashboard_summary(_supervisor()))
 
     assert result["downtime_minutes"] == 0.0

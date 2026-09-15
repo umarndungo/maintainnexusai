@@ -1,0 +1,46 @@
+# Public data/source registry for MaintainNexus predictive-maintenance work.
+# Raw downloads are intentionally gitignored. Keep provenance in this file.
+sources:
+  - id: uci_ai4i_2020
+    name: AI4I 2020 Predictive Maintenance Dataset
+    provider: UCI Machine Learning Repository
+    url: https://archive.ics.uci.edu/dataset/601/ai4i+2020+predictive+maintenance+dataset
+    download_url: https://archive.ics.uci.edu/static/public/601/ai4i%2B2020%2Bpredictive%2Bmaintenance%2Bdataset.zip
+    format: zip/csv
+    license: CC BY 4.0
+    role: external_public
+    relevance: baseline_failure_classification
+    notes: Synthetic industrial dataset; useful for pipeline/model benchmarking, not KPC telemetry.
+
+  - id: uci_hydraulic_447
+    name: Condition monitoring of hydraulic systems
+    provider: UCI Machine Learning Repository
+    url: https://archive.ics.uci.edu/dataset/447/condition+monitoring+of+hydraulic+systems
+    download_url: https://archive.ics.uci.edu/static/public/447/condition+monitoring+of+hydraulic+systems.zip
+    format: zip/txt
+    license: CC BY 4.0
+    role: external_public
+    relevance: pump_valve_condition_monitoring
+    notes: Experimental hydraulic test rig with pressure, flow, temperature, vibration and component-condition labels.
+
+  - id: cwru_bearing
+    name: Case Western Reserve University Bearing Data Center
+    provider: Case Western Reserve University
+    url: https://engineering.case.edu/bearingdatacenter/welcome
+    download_url: https://engineering.case.edu/bearingdatacenter/download-data-file
+    format: matlab
+    license: See source terms
+    role: external_public
+    relevance: vibration_bearing_faults
+    notes: Manual download from the official data center; useful for rotating-equipment vibration features.
+
+  - id: kpc_annual_reports
+    name: Kenya Pipeline Company Annual Reports
+    provider: Kenya Pipeline Company
+    url: https://kpc.co.ke/annual-reports/
+    download_url: https://kpc.co.ke/annual-reports/
+    format: pdf
+    license: Source-specific/public report
+    role: kpc_public_context
+    relevance: equipment_context_maintenance_operational_evidence
+    notes: Do not treat report text as raw telemetry. Extract only documented equipment/context and retain report/year provenance.

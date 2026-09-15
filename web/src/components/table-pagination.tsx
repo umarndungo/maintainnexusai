@@ -26,7 +26,7 @@ export function TablePagination({
           Previous
         </button>
         <span aria-live="polite">
-          {page} / {pages}
+          Page {page} of {pages}
         </span>
         <button
           type="button"

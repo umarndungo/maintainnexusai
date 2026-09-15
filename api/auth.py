@@ -84,6 +84,27 @@ def require_internal_or_user(
     return get_current_user(credentials)
 
 
+def require_internal_or_roles(*roles: str):
+    """Like require_roles, but also accepts the internal-service header —
+    for an endpoint the ETL pipeline calls unattended (no user session)
+    that should otherwise keep its existing human role restriction intact.
+    Unlike require_internal_or_user, a human caller still needs one of
+    ``roles``; this doesn't open the endpoint to every logged-in user."""
+
+    def dependency(
+        x_internal_service: str | None = Header(default=None),
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)] = None,
+    ) -> dict:
+        if hmac.compare_digest(x_internal_service or "", INTERNAL_SERVICE_TOKEN):
+            return {"id": "internal", "role": "internal", "station_ids": []}
+        user = get_current_user(credentials)
+        if user["role"] not in roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+        return user
+
+    return dependency
+
+
 @router.post("/login")
 async def login(request: LoginRequest):
     user = USERS.get(request.user_id)

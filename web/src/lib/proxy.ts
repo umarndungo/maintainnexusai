@@ -27,6 +27,6 @@ export async function proxy(request: NextRequest, path: string, roles: UserRole[
     });
     return new NextResponse(await response.text(), { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
   } catch {
-    return NextResponse.json({ detail: "The MaintainNexus API is unavailable" }, { status: 503 });
+    return NextResponse.json({ detail: "The MaintainNexus AI API is unavailable" }, { status: 503 });
   }
 }

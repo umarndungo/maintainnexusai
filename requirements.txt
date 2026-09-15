@@ -9,11 +9,20 @@ celery
 redis
 great_expectations
 pandas
+numpy
+scikit-learn
 pytest
 prometheus-client
 xgboost
-scikit-learn
-numpy
+# Base image is python:3.11-slim (see Dockerfile), so shap>=0.50.0 is
+# installable -- that's the release where TreeExplainer starts parsing
+# this model's bracketed base_score field correctly (verified against
+# the real model.json in a throwaway python:3.11-slim container: shap
+# resolved to 0.51.0 and built cleanly). Capped below 0.52.0, which
+# requires Python >=3.12 -- one bump further than this image is on.
+# ml/scoring.py's _build_explainer() still degrades gracefully on
+# failure regardless, as a safety net for any other version drift.
+shap>=0.50.0,<0.52.0
 Faker
 python-multipart
 # Notifications providers (Build Plan Phase 2/3) — safe to install even

@@ -46,22 +46,27 @@ class DeepLinkService {
     _subscription?.cancel();
   }
 
-  void _handle(Uri uri) {
+  Future<void> _handle(Uri uri) async {
     if (uri.scheme != 'maintainnexus' || uri.host != 'work-orders') return;
     final workOrderId = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
     if (workOrderId == null || workOrderId.isEmpty) return;
 
-    final navigator = _navigatorKey.currentState;
-    if (navigator == null) return;
-
     // Not signed in yet (link tapped cold, before the technician has
     // opened the app once): let sign-in happen first rather than
     // pushing a detail screen on top of it. The link itself doesn't
-    // survive that — acceptable for tonight; a held-link-until-signed-in
-    // flow is real API-integration work, out of scope here.
+    // survive that — acceptable for now; a held-link-until-signed-in
+    // flow is a separate improvement, out of scope here.
     if (!_appController.signedIn) return;
 
-    final target = _appController.tryById(workOrderId) != null
+    // tryById does a real fetch when the id isn't already cached (see
+    // AppController.tryById) — that's a network round trip, so this
+    // whole handler is async now, unlike the mock-data version.
+    final found = await _appController.tryById(workOrderId);
+
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return;
+
+    final target = found != null
         ? WorkOrderDetailScreen(workOrderId: workOrderId)
         : DeepLinkNotFoundScreen(workOrderId: workOrderId);
     navigator.push(MaterialPageRoute(builder: (_) => target));

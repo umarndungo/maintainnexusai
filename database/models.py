@@ -210,3 +210,99 @@ class EquipmentReading(Base):
     __table_args__ = (
         Index("ix_equipment_readings_equipment_id_received_at", "equipment_id", "received_at"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Predict -> Decide -> Act -> Learn: the decision-engine tables.
+#
+# Deliberately simplified from the full docs/11-PRODUCT-CONTRACT.md schema
+# for a first build (see etl/decision_engine.py's module docstring) — no
+# standalone Truck entity, and LoadingPoint/LoadingSlot are lazily
+# self-seeded at decision time rather than pre-populated, since the
+# equipment fleet is randomized per-process (api/equipment.py) and a fixed
+# seed can't reliably target whichever pump actually shows up in a given
+# run's generated telemetry.
+# ---------------------------------------------------------------------------
+
+class LoadingPoint(Base):
+    """One loading bay. ``equipment_id`` is the pump/valve/arm serving it —
+    not a foreign key (equipment doesn't have its own table yet either;
+    same string-matching convention as EquipmentReading/WorkOrderRecord)."""
+
+    __tablename__ = "loading_points"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    bay_code = Column(String, unique=True, nullable=False)
+    equipment_id = Column(String, nullable=True)
+    station_id = Column(String, nullable=True)
+    supported_product = Column(String, nullable=False, default="DIESEL")
+    capacity_status = Column(String, nullable=False, default="AVAILABLE")  # AVAILABLE / UNAVAILABLE
+
+
+class LoadingSlot(Base):
+    """A truck scheduled at a loading point. Reassignment moves
+    ``loading_point_id`` to an alternate bay rather than mutating history —
+    the row's own ``status`` records that it happened, and Decision/
+    OperationalAction below carry the why."""
+
+    __tablename__ = "loading_slots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    loading_point_id = Column(Integer, ForeignKey("loading_points.id"), nullable=False)
+    truck_code = Column(String, nullable=False)
+    scheduled_arrival = Column(DateTime(timezone=True), nullable=False)
+    planned_volume = Column(Float, nullable=True)
+    status = Column(String, nullable=False, default="SCHEDULED")  # SCHEDULED / REASSIGNED / COMPLETED
+
+
+class Decision(Base):
+    """One decision-engine evaluation that resulted in an action.
+    ``reading_id`` is this system's ``prediction_id`` — the EquipmentReading
+    that triggered the evaluation (docs/10-ML-BACKEND-CONTRACT.md)."""
+
+    __tablename__ = "decisions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    reading_id = Column(Integer, ForeignKey("equipment_readings.id"), nullable=True)
+    decision_type = Column(String, nullable=False)  # REASSIGN_LOADING_POINT / RESCHEDULE_TRUCK / CREATE_MAINTENANCE_WORK_ORDER
+    reason = Column(Text, nullable=False)
+    affected_equipment_id = Column(String, nullable=False)
+    requires_human_approval = Column(Boolean, nullable=False, default=False)
+    policy_version = Column(String, nullable=False, default="automation-policy-1.0")
+    created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
+
+
+class OperationalAction(Base):
+    """The action taken for a Decision. ``idempotency_key`` is unique —
+    same dedup discipline as WorkOrderRecord.alert_task_id — so retrying
+    the same decision never applies it twice."""
+
+    __tablename__ = "operational_actions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    decision_id = Column(Integer, ForeignKey("decisions.id"), nullable=False)
+    action_type = Column(String, nullable=False)
+    truck_code = Column(String, nullable=True)
+    original_loading_point_id = Column(Integer, nullable=True)
+    new_loading_point_id = Column(Integer, nullable=True)
+    idempotency_key = Column(String, unique=True, nullable=False)
+    status = Column(String, nullable=False, default="APPLIED")
+    requested_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
+
+
+class OperationalOutcome(Base):
+    """The Learn stage — what actually happened after an action. Written
+    as a stub (only action_success known) at action time; the rest is
+    filled in later by a follow-up close-out step, which is out of scope
+    for this first build (docs/14-PREDICT-DECIDE-ACT-LEARN.md §20: "model
+    learning is not immediate")."""
+
+    __tablename__ = "operational_outcomes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    action_id = Column(Integer, ForeignKey("operational_actions.id"), nullable=False)
+    action_success = Column(Boolean, nullable=True)
+    actual_failure = Column(Boolean, nullable=True)
+    actual_delay_minutes = Column(Float, nullable=True)
+    alternate_bay_completed = Column(Boolean, nullable=True)
+    recorded_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)

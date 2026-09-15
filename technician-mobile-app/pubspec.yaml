@@ -41,9 +41,13 @@ dependencies:
   google_fonts: ^6.2.1
 
   # Small, explicit state container for theme mode, simulated
-  # connectivity, and the mock work-order/sync-queue data used to
-  # drive these screens. No backend is wired up yet — see README.md.
+  # connectivity, and the (now real, see lib/services/api_client.dart)
+  # work-order/sync-queue data used to drive these screens.
   provider: ^6.1.2
+
+  # Talks to the real MaintainNexus API (api/auth.py, api/workorders.py)
+  # — see lib/services/api_client.dart.
+  http: ^1.2.2
 
   # Relative/absolute timestamp formatting ("4 min ago") used across
   # work order cards and the audit-style lifecycle timelines.

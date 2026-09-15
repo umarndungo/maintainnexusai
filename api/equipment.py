@@ -10,12 +10,20 @@ import random
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from api.auth import require_roles
+from api.auth import require_internal_or_roles
 
+# The ETL pipeline (etl.extract.check_stock) calls this unattended, with
+# no human role to present. require_internal_or_roles (unlike
+# require_internal_or_user) keeps the existing role restriction for human
+# callers — it only adds an internal-service path alongside it. This was
+# previously require_roles(...) with no internal-service path at all,
+# which silently broke every alert -> work-order dispatch: check_stock()
+# always got a 401 here and the pipeline held before ever reaching a
+# technician lookup or work-order creation.
 router = APIRouter(
     prefix="/api/v1/warehouse",
     tags=["Inventory"],
-    dependencies=[Depends(require_roles("technician", "engineer", "executive", "supervisor"))],
+    dependencies=[Depends(require_internal_or_roles("technician", "engineer", "executive", "supervisor"))],
 )
 
 _PARTS = [

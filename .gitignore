@@ -100,6 +100,15 @@ yarn-error.log*
 
 # Generated files
 *.lock
+# ML/raw data artifacts — do not commit downloaded or generated datasets
+/data/raw/*
+/data/staging/*
+/data/processed/*
+/data/synthetic/*
+!/data/raw/.gitkeep
+!/data/staging/.gitkeep
+!/data/processed/.gitkeep
+!/data/synthetic/.gitkeep
 
 # Next.js generated files
 .next/

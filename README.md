@@ -1,5 +1,7 @@
 # MaintainNexus - Predictive Maintenance & Work Order Dispatch Infrastructure
 
+MaintainNexus is a predictive maintenance and work order dispatch system designed to streamline industrial equipment maintenance workflows. It provides a complete pipeline from alert ingestion through technician dispatch, with automated scheduling, audit logging, inventory checks, and a Next.js dashboard UI (migration from the existing Flutter implementation).
+
 > Phase 2 web dashboard: use `web/` (Next.js). The mobile target is `technician-mobile-app/`
 > (Flutter) — `maintain_nexus_ui/`, the older Flutter dashboard, is disabled and renamed to
 > `_disabled_maintain_nexus_ui/`. Use `docs/04-DEPLOYMENT-GUIDE.md` for current web deployment.
@@ -16,7 +18,6 @@ This includes the web container at http://localhost:3000 and the backend at http
 Current contract gaps are recorded in `docs/FRONTEND-INTEGRATION-STATUS.md`; a passing frontend build does not establish completion of every backend/ML/mobile requirement.
 
 
-MaintainNexus is a predictive maintenance and work order dispatch system designed to streamline industrial equipment maintenance workflows. It provides a complete pipeline from alert ingestion through technician dispatch, with automated scheduling, audit logging, inventory checks, and a Flutter dashboard UI.
 
 ## Architecture Overview
 
@@ -27,6 +28,7 @@ maintain-nexus/
 ├── api/             # Mock FastAPI service suite (Inventory, Alerts, HR, Work Orders, Dashboard)
 ├── etl/             # Data pipeline: extraction, validation, transformation, loading
 ├── database/        # PostgreSQL persistence with SQLAlchemy ORM and audit logging
+├── frontend/         # Next.js dashboard target (to be created)
 ├── _disabled_maintain_nexus_ui/ # Old Flutter dashboard, disabled — see technician-mobile-app/
 ├── tests/           # Pytest integration and unit tests
 └── .github/         # CI/CD automation via GitHub Actions
@@ -318,7 +320,119 @@ published to the host) before running `pytest`.
 `maintain_nexus_ui/` (the old Flutter web dashboard this section covered — Netlify/GitHub Pages
 static hosting) is disabled; that guidance no longer applies. Current deployment docs:
 
+### Build the web app
+
+```bash
+cd maintain_nexus_ui
+flutter pub get
+flutter build web --release
+```
+
+The built static files will be available in `maintain_nexus_ui/build/web/`.
+
+### Deploy to Netlify
+
+1. Build the app as shown above.
+2. In the Netlify dashboard, drag and drop the `maintain_nexus_ui/build/web/` folder.
+3. Or use the Netlify CLI:
+
+```bash
+npm install -g netlify-cli
+cd maintain_nexus_ui
+netlify deploy --dir=build/web
+netlify deploy --dir=build/web --prod
+```
+
+> If your dashboard uses client-side routing later, add a `_redirects` file in `build/web/` with:
+>
+> ```text
+> /* /index.html 200
+> ```
+
+### Deploy to GitHub Pages
+
+#### Option A: Use the `docs/` folder
+
+```bash
+cd maintain_nexus_ui
+flutter build web --release
+rm -rf ../docs
+mkdir ../docs
+cp -r build/web/* ../docs/
+cd ..
+git add docs
+git commit -m "Deploy Flutter web dashboard to GitHub Pages"
+git push
+```
+
+Then enable GitHub Pages in repository settings:
+- Source: `main` branch
+- Folder: `/docs`
+
+#### Option B: Use `gh-pages` branch
+
+1. Build the app:
+
+```bash
+cd maintain_nexus_ui
+flutter build web --release
+```
+
+2. Push the contents of `build/web/` to a `gh-pages` branch using a deploy script or GitHub Action.
+3. Enable GitHub Pages from the `gh-pages` branch.
+
+### Important note
+
+The hosted frontend is static only. The backend must remain available independently, so update the dashboard API base URL to point to the hosted FastAPI backend rather than `localhost`.
+
+### Backend hosting guidance
+
+The backend should be deployed as a separate service, such as:
+
+- **Railway**, **Render**, **Fly.io**, or **Heroku** for the FastAPI app
+- **Docker Compose** locally for development
+- **PostgreSQL** and **Redis** must also be hosted or managed for production
+
+Common backend hosting setup:
+
+1. Deploy the FastAPI app and expose the API at a public base URL.
+2. Ensure the Celery worker is running with access to Redis.
+3. Point the Flutter web app configuration at the public API URL.
+
+If the backend is served at `https://api.example.com`, the frontend should use that URL for all API calls.
+
+### Example frontend configuration
+
+The Flutter app reads its backend base URL from a compile-time environment variable.
+
+Build the web app with a hosted backend URL like this:
+
+```bash
+cd maintain_nexus_ui
+flutter build web --release --dart-define=API_BASE_URL=https://api.example.com/api/v1
+```
+
+For local development, the app still defaults to:
+
+```dart
+http://localhost:8000/api/v1
+```
+
+If the backend is deployed to a different hostname or path, change `API_BASE_URL` accordingly.
+
+
+## Target operational workflow
+
+`Telemetry → ML prediction → decision engine → automated API action → operational outcome → feedback`
+
+The platform covers **pumps, loading arms and valves**. Automated scheduling/reassignment is the prototype action target; safety-critical physical control is outside the ML service boundary.
+
+Shared contracts: `docs/09-DATA-REQUIREMENTS-MATRIX.md`, `docs/10-ML-BACKEND-CONTRACT.md`, and `schemas/`.
+
+**Data provenance:** public KPC information is used for verified context; raw KPC SCADA/IoT/CMMS data is not assumed public. Prototype data must be labelled synthetic.
+
 - **Backend** (FastAPI + Celery worker + Celery Beat): `render.yaml` at the repo root, or see
   `docs/04-DEPLOYMENT-GUIDE.md`.
 - **Web dashboard** (`web/`, Next.js): `web/README.md`.
 - **Mobile** (`technician-mobile-app/`, Flutter): `technician-mobile-app/README.md`.
+

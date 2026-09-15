@@ -9,7 +9,7 @@ import { AppShell } from "@/components/app-shell";
 export default async function AuditPage({ searchParams }: { searchParams: Promise<{ event?: string; from?: string; to?: string }> }) {
   const { token, user } = await requireSession(["engineer", "supervisor", "executive"]);
   const { event = "", from = "", to = "" } = await searchParams;
-  const [result, logsResult] = await Promise.all([getAuditVerification(token), getAuditLogs(token)]);
+  const [result, logsResult] = await Promise.all([getAuditVerification(), getAuditLogs(token)]);
   const verification = result.data;
   const logs = logsResult.data ?? [];
   const start = from ? Date.parse(`${from}T00:00:00Z`) : -Infinity;

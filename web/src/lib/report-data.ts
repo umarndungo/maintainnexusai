@@ -33,7 +33,7 @@ export function csvCell(value: unknown) {
 }
 
 export function reportCsv(rows: Array<ReportWindow & { period_minutes: number }>, metadata: Array<[string, string | number]>) {
-  const lines: unknown[][] = [["MaintainNexus network downtime report"], ...metadata, [],
+  const lines: unknown[][] = [["MaintainNexus AI network downtime report"], ...metadata, [],
     ["ID", "Equipment", "Station", "Work order", "Cause alert ID", "Start UTC", "End UTC", "Recorded duration seconds", "Minutes within selected period", "Status", "Latest equipment provenance"],
     ...rows.map(row => [row.id, row.equipment_id, row.station, row.work_order_id, row.cause_alert_id, row.started_at, row.ended_at, row.duration_seconds, row.period_minutes, row.ended_at ? "Closed" : "Open", row.provenance])];
   return "\uFEFF" + lines.map(line => line.map(csvCell).join(",")).join("\r\n");
