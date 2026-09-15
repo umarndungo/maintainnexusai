@@ -87,6 +87,25 @@ async def create_work_order(wo: WorkOrderCreate):
     # Persist to PostgreSQL
     db = SessionLocal()
     try:
+        # Guard against a duplicate alert_task_id at the endpoint itself —
+        # not just upstream in tasks._find_existing_work_order_by_task_id,
+        # which only protects the one automated caller (the Celery
+        # pipeline). Any other caller hitting this endpoint twice for the
+        # same alert would otherwise create two work orders for it.
+        # etl/load.dispatch_work_order already expects and handles this
+        # exact 409 (02-BACKEND-GUIDE.md §3).
+        if wo.alert_task_id is not None:
+            existing = (
+                db.query(WorkOrderRecord)
+                .filter(WorkOrderRecord.alert_task_id == wo.alert_task_id)
+                .first()
+            )
+            if existing is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"A work order already exists for alert_task_id {wo.alert_task_id!r}: {existing.id}",
+                )
+
         record = WorkOrderRecord(
             id=wo_id,
             equipment_id=wo.equipment_id,

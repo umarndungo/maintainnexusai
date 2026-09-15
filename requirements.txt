@@ -14,7 +14,6 @@ prometheus-client
 xgboost
 scikit-learn
 numpy
-apscheduler
 Faker
 python-multipart
 # Notifications providers (Build Plan Phase 2/3) — safe to install even
