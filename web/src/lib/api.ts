@@ -127,16 +127,17 @@ export function getReportSources(token: string) {
   return Promise.all([getExecutiveSummary(token), getMonitoring(token), request<WorkOrder[]>("/api/v1/maintenance/work-orders", token), request<RecentAlert[]>("/api/v1/alerts/recent", token)]);
 }
 
-export async function getAuditVerification(token: string) {
-  const result = await request<{ chain_integrity: boolean; checked_events: number; chain: string; verified_at: string }>("/api/v1/dashboard/audit-logs/verify", token);
-  if (result.available && (!result.data || typeof result.data.chain_integrity !== "boolean" || !Number.isInteger(result.data.checked_events) || result.data.checked_events < 0 || !Number.isFinite(Date.parse(result.data.verified_at)))) {
-    return { data: null, available: false, status: 502, error: "The backend did not supply a complete audit verification result." };
-  }
-  return result;
+// The current backend contract has no audit verification endpoint.
+export async function getAuditVerification(): Promise<ApiResult<{ chain_integrity: boolean; checked_events: number; chain: string; verified_at: string }>> {
+  return { data: null, available: false, error: "Audit verification is not supported by the current backend contract." };
 }
 
 export async function getCurrentUser(token: string): Promise<ApiResult<CurrentUser>> {
-  const result = await request<CurrentUser>("/api/v1/auth/me", token);
+  let result = await request<CurrentUser>("/api/v1/auth/me", token);
+  // Retry transient failures, never invalid credentials or authorization denials.
+  if (!result.available && (result.status === undefined || result.status >= 500)) {
+    result = await request<CurrentUser>("/api/v1/auth/me", token);
+  }
   const user = result.data;
   if (user && (typeof user.id !== "string" || !["engineer", "supervisor", "executive", "technician"].includes(user.role) || !Array.isArray(user.station_ids) || !user.station_ids.every(station => typeof station === "string"))) {
     return { data: null, available: false, status: 502 };

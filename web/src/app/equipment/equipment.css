@@ -1,0 +1,8 @@
+.equipment-workspace { width:100%; max-width:1600px; padding:32px; margin:0 auto; font-family:var(--font-lato),Lato,sans-serif; }
+.equipment-workspace .detail-header h1 { font-size:28px; line-height:36px; font-weight:700; color:var(--ink); }
+.equipment-workspace .detail-header p { font-size:14px; color:var(--muted); }
+.equipment-workspace .monitoring-filters { flex-wrap:wrap; gap:8px; }
+.equipment-workspace .monitoring-filters .selected { background:var(--brand-red); border-color:var(--brand-red); color:white; }
+.equipment-table-skeleton { padding:24px; }.equipment-table-skeleton span { display:block; height:48px; margin:12px 0; border-radius:8px; background:var(--subtle); }
+@media(max-width:1279px) { .equipment-workspace { padding:24px; } }
+@media(max-width:767px) { .equipment-workspace { padding:16px; } }

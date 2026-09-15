@@ -80,7 +80,7 @@ export default async function DashboardPage({
         <section className="stat-grid">
           <StatCard
             label="Needs Attention"
-            value={monitoring.available ? equipment.length : "—"}
+            value={monitoring.available ? equipment.filter(row => ["FAILURE_DETECTED", "APPROACHING_THRESHOLD"].includes(row.state)).length : "—"}
             detail="Evaluated assets requiring attention in your stations"
             icon="equipment"
             tone="red"
@@ -88,7 +88,7 @@ export default async function DashboardPage({
           <StatCard
             label="Unscored Assets"
             value={monitoring.available ? equipment.filter(row => row.state === "UNSCORED").length : "?"}
-            detail="Backend dataset · all recorded alerts"
+            detail="Assets without a recorded model evaluation"
             icon="alerts"
             tone="red"
           />
