@@ -29,9 +29,9 @@ class FakeApiClient implements ApiClient {
   String get baseUrl => 'http://fake';
 
   @override
-  Future<String> login(String employeeId) async {
+  Future<LoginResult> login(String employeeId) async {
     accessToken = 'fake-token';
-    return accessToken!;
+    return const LoginResult(accessToken: 'fake-token', name: 'Demo Technician', technicianId: 'TECH-101');
   }
 
   @override

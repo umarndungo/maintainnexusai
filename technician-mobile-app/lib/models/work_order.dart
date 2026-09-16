@@ -30,6 +30,7 @@ class WorkOrder {
     required this.riskScore,
     required this.status,
     required this.statusNote,
+    this.assignedTechnicianId,
     this.approvedBy,
     this.riskDrivers = const [],
     this.reservedPart,
@@ -50,6 +51,11 @@ class WorkOrder {
   final double riskScore;
 
   WorkOrderStatus status;
+
+  /// The roster id (e.g. "TECH-101") this order is assigned to — see
+  /// api/technicians.py. Used by AppController to scope the list to the
+  /// signed-in technician.
+  final String? assignedTechnicianId;
 
   /// Short line under the title on the list screen, e.g.
   /// "Dispatched 6 min ago · Approved by station engineer".
@@ -118,6 +124,7 @@ class WorkOrder {
       riskScore: riskProbability ?? 0.0,
       status: status,
       statusNote: status == WorkOrderStatus.scheduled ? 'Awaiting approval' : '${_statusVerb(status)} $elapsed',
+      assignedTechnicianId: json['assigned_technician_id'] as String?,
       reservedPart: json['reserved_part'] as String?,
       // GET /alerts/recent doesn't expose top_features -- see
       // ApiClient.getRecentAlerts's docstring. Empty here renders the

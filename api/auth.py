@@ -17,7 +17,7 @@ bearer = HTTPBearer(auto_error=False)
 JWT_SECRET = AUTH_SECRET.encode()
 
 USERS = {
-    "tech-demo": {"name": "Demo Technician", "role": "technician", "station_ids": ["STATION-1"]},
+    "tech-demo": {"name": "Demo Technician", "role": "technician", "station_ids": ["STATION-1"], "technician_id": "TECH-101"},
     "engineer-demo": {"name": "Demo Engineer", "role": "engineer", "station_ids": ["STATION-1"]},
     "executive-demo": {"name": "Demo Executive", "role": "executive", "station_ids": []},
     "supervisor-demo": {"name": "Demo Supervisor", "role": "supervisor", "station_ids": []},
@@ -26,6 +26,26 @@ USERS = {
 
 class LoginRequest(BaseModel):
     user_id: str
+
+
+def _lookup_user(user_id: str) -> dict | None:
+    """Resolve a login/token subject to a user record.
+
+    Checks the static demo USERS dict first, then falls back to the HR
+    technician roster (api/technicians.py) so a raw roster id like
+    "TECH-105" is itself a valid login — no separate mapping table to
+    keep in sync with the roster. Imported locally to avoid a circular
+    import, since technicians.py imports from this module at load time.
+    """
+    user = USERS.get(user_id)
+    if user is not None:
+        return user
+    from api.technicians import TECHNICIANS_BY_ID
+
+    tech = TECHNICIANS_BY_ID.get(user_id)
+    if tech is None:
+        return None
+    return {"name": tech["name"], "role": "technician", "station_ids": [], "technician_id": tech["id"]}
 
 
 def _encode(value: dict) -> str:
@@ -54,11 +74,14 @@ def get_current_user(
         if not hmac.compare_digest(signature, _sign(header, payload)):
             raise ValueError
         claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-        if claims["exp"] < int(time.time()) or claims["sub"] not in USERS:
+        if claims["exp"] < int(time.time()):
+            raise ValueError
+        user = _lookup_user(claims["sub"])
+        if user is None:
             raise ValueError
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from exc
-    return {"id": claims["sub"], **USERS[claims["sub"]]}
+    return {"id": claims["sub"], **user}
 
 
 def require_roles(*roles: str):
@@ -107,7 +130,7 @@ def require_internal_or_roles(*roles: str):
 
 @router.post("/login")
 async def login(request: LoginRequest):
-    user = USERS.get(request.user_id)
+    user = _lookup_user(request.user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown user")
     return {"access_token": create_access_token(request.user_id), "token_type": "bearer", "user": {"id": request.user_id, **user}}

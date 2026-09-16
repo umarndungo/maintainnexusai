@@ -26,6 +26,18 @@ class ApiException implements Exception {
   String toString() => 'ApiException($statusCode): $message';
 }
 
+/// The `user` object POST /api/v1/auth/login returns alongside the token.
+/// [technicianId] is null for non-technician roles (engineer, executive,
+/// supervisor) — see api/auth.py's `_lookup_user`, which only sets
+/// `technician_id` for technician logins.
+class LoginResult {
+  const LoginResult({required this.accessToken, required this.name, this.technicianId});
+
+  final String accessToken;
+  final String name;
+  final String? technicianId;
+}
+
 class ApiClient {
   ApiClient({http.Client? httpClient, String? baseUrl})
       : _http = httpClient ?? http.Client(),
@@ -47,9 +59,11 @@ class ApiClient {
 
   /// POST /api/v1/auth/login — no password, matching every demo login in
   /// this system (api/auth.py's USERS dict, keyed by ids like
-  /// "tech-demo"). Returns the access token on success; throws
-  /// [ApiException] (401 "Unknown user") otherwise.
-  Future<String> login(String employeeId) async {
+  /// "tech-demo") as well as a raw roster id like "TECH-105" (see
+  /// api/auth.py's `_lookup_user`). Returns the token plus the resolved
+  /// user on success; throws [ApiException] (401 "Unknown user")
+  /// otherwise.
+  Future<LoginResult> login(String employeeId) async {
     final response = await _http.post(
       _uri('/api/v1/auth/login'),
       headers: {'Content-Type': 'application/json'},
@@ -60,7 +74,12 @@ class ApiClient {
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     accessToken = body['access_token'] as String;
-    return accessToken!;
+    final user = body['user'] as Map<String, dynamic>? ?? const {};
+    return LoginResult(
+      accessToken: accessToken!,
+      name: user['name'] as String? ?? employeeId,
+      technicianId: user['technician_id'] as String?,
+    );
   }
 
   /// GET /api/v1/maintenance/work-orders — returns *every* work order in
