@@ -10,11 +10,11 @@ import 'package:http/http.dart' as http;
 ///
 /// Base URL is a compile-time constant so it can be overridden per
 /// target without touching code:
-///   - Android emulator (default): the host machine's Docker backend is
-///     reachable at 10.0.2.2, not localhost (the emulator's own loopback).
-///   - iOS simulator / desktop / web: pass
-///     `--dart-define=API_BASE_URL=http://localhost:8000`.
-///   - A real device: pass the dev machine's LAN IP, e.g.
+///   - Default live backend: the deployed backend is reachable at the
+///     Cloudflare tunnel URL provided for the project.
+///   - Local testing: pass a local URL such as
+///     `--dart-define=API_BASE_URL=http://10.0.2.2:8000`.
+///   - A real device: pass the dev machine's LAN IP or tunnel URL, e.g.
 ///     `--dart-define=API_BASE_URL=http://192.168.1.23:8000`.
 class ApiException implements Exception {
   ApiException(this.statusCode, this.message);
@@ -42,7 +42,10 @@ class LoginResult {
 class ApiClient {
   ApiClient({http.Client? httpClient, String? baseUrl})
       : _http = httpClient ?? http.Client(),
-        baseUrl = baseUrl ?? const String.fromEnvironment('API_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
+        baseUrl = baseUrl ?? const String.fromEnvironment(
+          'API_BASE_URL',
+          defaultValue: 'https://muscle-listed-tax-jackie.trycloudflare.com',
+        );
 
   final http.Client _http;
   final String baseUrl;
