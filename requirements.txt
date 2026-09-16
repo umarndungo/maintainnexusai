@@ -25,6 +25,7 @@ xgboost
 shap>=0.50.0,<0.52.0
 Faker
 python-multipart
+bcrypt
 # Notifications providers (Build Plan Phase 2/3) — safe to install even
 # before credentials exist; integrations/*_client.py no-op without them.
 africastalking
