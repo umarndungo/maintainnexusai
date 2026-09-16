@@ -5,6 +5,7 @@ import '../state/app_controller.dart';
 import '../widgets/mono_text.dart';
 import 'notification_preview_screen.dart';
 import 'sync_conflict_screen.dart';
+import 'change_password_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -24,6 +25,16 @@ class SettingsScreen extends StatelessWidget {
             Text('Settings', style: theme.textTheme.headlineSmall),
             const SizedBox(height: 20),
             _ProfileCard(employeeId: app.employeeId),
+            const SizedBox(height: 28),
+            _SettingsCard(
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.lock_reset_rounded),
+                title: const Text('Change password'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChangePasswordScreen())),
+              ),
+            ),
             const SizedBox(height: 28),
             Text('APPEARANCE', style: theme.textTheme.labelSmall),
             const SizedBox(height: 10),

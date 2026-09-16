@@ -9,7 +9,7 @@ export type ApiResult<T> = {
 };
 
 export type UserRole = "engineer" | "supervisor" | "executive" | "technician";
-export type CurrentUser = { id: string; name?: string; role: UserRole; station_ids: string[] };
+export type CurrentUser = { id: string; name?: string; role: UserRole; station_ids: string[]; must_change_password?: boolean };
 export type Prediction = { failure_probability: number; failure_predicted: boolean; risk_level: string; threshold: number; prediction_horizon_hours: number; target?: string; model_version?: string; prediction_id?: string; timestamp?: string; top_features?: string[] };
 export type Thresholds = { failure_probability: number; warning_probability: number | null; prediction_horizon_hours: number; source: string; target?: string; sensor_limits: null };
 export type EquipmentReading = { id: number; equipment_id: string; station_id?: string; telemetry: Record<string, string | number | null>; prediction: Prediction | null; state: string; evaluation_reason?: string; received_at: string };

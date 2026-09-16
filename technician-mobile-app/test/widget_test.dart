@@ -17,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:technician_mobile_app/app.dart';
 import 'package:technician_mobile_app/services/api_client.dart';
 import 'package:technician_mobile_app/state/app_controller.dart';
+import 'package:technician_mobile_app/screens/change_password_screen.dart';
 
 /// Records calls and returns canned data instead of hitting the network
 /// — same shapes the real backend returns (see api/workorders.py,
@@ -29,10 +30,13 @@ class FakeApiClient implements ApiClient {
   String get baseUrl => 'http://fake';
 
   @override
-  Future<LoginResult> login(String employeeId) async {
+  Future<LoginResult> login(String employeeId, String password) async {
     accessToken = 'fake-token';
     return const LoginResult(accessToken: 'fake-token', name: 'Demo Technician', technicianId: 'TECH-101');
   }
+
+  @override
+  Future<void> changePassword(String currentPassword, String newPassword) async {}
 
   @override
   Future<List<Map<String, dynamic>>> getWorkOrders() async => [
@@ -106,4 +110,33 @@ void main() {
     expect(find.text('My work orders'), findsOneWidget);
     expect(find.text('Excess vibration detected'), findsOneWidget);
   });
+
+  testWidgets('forced password change appears before work orders', (WidgetTester tester) async {
+    final appController = AppController(apiClient: _MustChangeFakeApiClient());
+
+    await tester.pumpWidget(MaintainNexusTechnicianApp(appController: appController));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    final signInButton = find.widgetWithText(ElevatedButton, 'Sign in');
+    await tester.ensureVisible(signInButton);
+    await tester.tap(signInButton);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.byType(ChangePasswordScreen), findsOneWidget);
+    expect(find.text('My work orders'), findsNothing);
+  });
+}
+
+class _MustChangeFakeApiClient extends FakeApiClient {
+  @override
+  Future<LoginResult> login(String employeeId, String password) async {
+    accessToken = 'fake-token';
+    return const LoginResult(
+      accessToken: 'fake-token',
+      name: 'Demo Technician',
+      technicianId: 'TECH-101',
+      mustChangePassword: true,
+    );
+  }
 }

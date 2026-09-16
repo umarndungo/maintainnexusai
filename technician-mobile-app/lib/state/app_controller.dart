@@ -63,11 +63,9 @@ class AppController extends ChangeNotifier {
   // ---------------------------------------------------------------------
   // Session
   //
-  // POST /api/v1/auth/login takes only a user_id, no password (see
-  // api/auth.py's USERS dict) and returns a 1-hour JWT — there's no
-  // refresh-token endpoint on the backend, so instead of managing token
-  // expiry directly this just re-runs login with the saved employee id
-  // whenever a call comes back 401 (see [_authed]).
+  // POST /api/v1/auth/login requires a password and returns a 1-hour JWT.
+  // Passwords are intentionally not persisted, so an old ID-only session
+  // cannot be silently replayed after an app restart.
   // ---------------------------------------------------------------------
   bool _signedIn = false;
   String employeeId = '';
@@ -80,6 +78,9 @@ class AppController extends ChangeNotifier {
   /// unscoped behavior whenever this is null, rather than showing an
   /// empty list.
   String? technicianId;
+
+  bool _mustChangePassword = false;
+  bool get mustChangePassword => _mustChangePassword;
 
   bool _restoringSession = true;
   bool get restoringSession => _restoringSession;
@@ -96,19 +97,8 @@ class AppController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final savedId = prefs.getString(_employeeIdPrefKey);
       if (savedId != null && savedId.isNotEmpty) {
-        // Restored eagerly so a slow login network call can't leave
-        // [technicianId] null for the scoping check in [loadWorkOrders]
-        // during the restore window; [signIn] below overwrites it with
-        // the freshly-resolved value once login completes.
-        technicianId = prefs.getString(_technicianIdPrefKey);
-        final ok = await signIn(savedId);
-        if (!ok) {
-          await prefs.remove(_employeeIdPrefKey);
-          await prefs.remove(_technicianIdPrefKey);
-        }
-        _restoringSession = false;
-        notifyListeners();
-        return;
+        await prefs.remove(_employeeIdPrefKey);
+        await prefs.remove(_technicianIdPrefKey);
       }
     } catch (_) {
       // No stored preferences (e.g. first web load) — fall through to sign-in.
@@ -136,12 +126,13 @@ class AppController extends ChangeNotifier {
 
   /// Returns true on success. On failure, [lastError] is set and the app
   /// stays on the sign-in screen.
-  Future<bool> signIn(String id) async {
+  Future<bool> signIn(String id, String password) async {
     lastError = null;
     try {
-      final result = await _api.login(id);
+      final result = await _api.login(id, password);
       employeeId = id;
       technicianId = result.technicianId;
+      _mustChangePassword = result.mustChangePassword;
       _signedIn = true;
       // Fired before the best-effort persistence below (same ordering
       // as setThemeMode) -- a slow or unresponsive SharedPreferences
@@ -167,6 +158,7 @@ class AppController extends ChangeNotifier {
     _workOrders.clear();
     _api.accessToken = null;
     technicianId = null;
+    _mustChangePassword = false;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_employeeIdPrefKey);
@@ -177,19 +169,34 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Wraps an authenticated call: on a 401 (expired token), silently
-  /// re-logs in with the saved employee id and retries once before
-  /// giving up — see the Session doc comment above for why there's no
-  /// separate refresh-token flow.
+  /// Wraps an authenticated call and surfaces a 401 to the caller. There is
+  /// no refresh-token endpoint, and passwords are not stored for replay.
   Future<T> _authed<T>(Future<T> Function() call) async {
     try {
       return await call();
     } on ApiException catch (exc) {
       if (exc.statusCode == 401 && employeeId.isNotEmpty) {
-        await _api.login(employeeId);
-        return await call();
+        rethrow;
       }
       rethrow;
+    }
+  }
+
+  Future<bool> changePassword(String currentPassword, String newPassword) async {
+    lastError = null;
+    try {
+      await _api.changePassword(currentPassword, newPassword);
+      _mustChangePassword = false;
+      notifyListeners();
+      return true;
+    } on ApiException catch (exc) {
+      lastError = exc.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      lastError = 'Could not reach the server. Check your connection and try again.';
+      notifyListeners();
+      return false;
     }
   }
 

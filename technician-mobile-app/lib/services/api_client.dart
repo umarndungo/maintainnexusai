@@ -31,11 +31,12 @@ class ApiException implements Exception {
 /// supervisor) — see api/auth.py's `_lookup_user`, which only sets
 /// `technician_id` for technician logins.
 class LoginResult {
-  const LoginResult({required this.accessToken, required this.name, this.technicianId});
+  const LoginResult({required this.accessToken, required this.name, this.technicianId, this.mustChangePassword = false});
 
   final String accessToken;
   final String name;
   final String? technicianId;
+  final bool mustChangePassword;
 }
 
 class ApiClient {
@@ -57,17 +58,13 @@ class ApiClient {
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
-  /// POST /api/v1/auth/login — no password, matching every demo login in
-  /// this system (api/auth.py's USERS dict, keyed by ids like
-  /// "tech-demo") as well as a raw roster id like "TECH-105" (see
-  /// api/auth.py's `_lookup_user`). Returns the token plus the resolved
-  /// user on success; throws [ApiException] (401 "Unknown user")
-  /// otherwise.
-  Future<LoginResult> login(String employeeId) async {
+  /// POST /api/v1/auth/login — returns the token plus the resolved user;
+  /// throws [ApiException] on failure.
+  Future<LoginResult> login(String employeeId, String password) async {
     final response = await _http.post(
       _uri('/api/v1/auth/login'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'user_id': employeeId}),
+      body: jsonEncode({'user_id': employeeId, 'password': password}),
     );
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, _errorDetail(response.body));
@@ -79,6 +76,14 @@ class ApiClient {
       accessToken: accessToken!,
       name: user['name'] as String? ?? employeeId,
       technicianId: user['technician_id'] as String?,
+      mustChangePassword: user['must_change_password'] as bool? ?? false,
+    );
+  }
+
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    await _patch(
+      '/api/v1/auth/change-password',
+      body: {'current_password': currentPassword, 'new_password': newPassword},
     );
   }
 
