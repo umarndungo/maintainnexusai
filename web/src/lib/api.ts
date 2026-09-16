@@ -17,6 +17,7 @@ export type Monitoring = { equipment: EquipmentReading[]; thresholds: Thresholds
 export type Technician = { id: string; name: string; certs: string[]; on_shift: boolean; active_work_orders: number };
 export type RecentAlert = { task_id?: string; equipment_id: string; station_id?: string; part_number?: string; severity?: string; failure_code?: string; received_at?: string; required_cert?: string; telemetry?: Record<string, string | number | null>; prediction?: Prediction | null; model_version?: string; triggered_by_model?: boolean; threshold?: number; risk_probability?: number; pipeline?: { status: string; reason?: string } };
 export type LifecycleEvent = { id: number; from_status?: string; to_status: string; actor_id: string; actor_role: string; note?: string; timestamp: string; event_hash?: string; previous_event_hash?: string };
+export type DowntimeWindow = { id: number; work_order_id?: string; started_at: string; ended_at?: string | null; duration_seconds?: number; estimated_cost?: number; cause_alert_id?: string | null };
 
 export type DashboardSummary = {
   available_technicians?: Array<{ id: string; name: string; certs?: string[] }>;
@@ -120,7 +121,7 @@ export function getLifecycle(workOrderId: string, token: string) {
 }
 
 export function getDowntime(equipmentId: string, token: string) {
-  return request<Array<{ id: number; work_order_id?: string; started_at: string; ended_at?: string | null; duration_seconds?: number; estimated_cost?: number; cause_alert_id?: string | null }>>(`/api/v1/dashboard/equipment/${encodeURIComponent(equipmentId)}/downtime`, token);
+  return request<DowntimeWindow[]>(`/api/v1/dashboard/equipment/${encodeURIComponent(equipmentId)}/downtime`, token);
 }
 
 export function getReportSources(token: string) {
