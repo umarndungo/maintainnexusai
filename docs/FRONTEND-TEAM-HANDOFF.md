@@ -73,8 +73,9 @@ presenting the full workflow as integrated.
    Exercise reading → prediction → alert → certified assignment → approval
    → dispatch → start → completion → fresh reading. Completing maintenance
    must not overwrite the last model evaluation or imply recovery. Test
-   engineer/supervisor scope and read-only executive access, queue outages,
-   unsupported inputs, duplicate timestamps and real audit verification.
+   engineer/supervisor operations access, executive read-only operations access,
+   technician denial, queue outages, unsupported inputs, duplicate timestamps
+   and real audit verification.
 
 ## Frontend checks and limits
 

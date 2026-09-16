@@ -19,6 +19,7 @@ Two role-gated views inside one Next.js app:
    risk-driver breakdown, station audit log.
 2. **Executive view** — cross-station rollup: downtime avoided, cost saved, uptime trend. Read-only.
 3. **Supervisor view** (shared shell with engineer view) — escalation queue.
+4. **Operations view** — loading-bay capacity and recent automated reroute decisions for engineers, supervisors, and executives. Executives have read-only access.
 
 ## 2. Why Next.js here specifically
 
@@ -47,6 +48,10 @@ Two role-gated views inside one Next.js app:
 | `GET /api/v1/dashboard/summary` | Home/overview cards |
 | `GET /api/v1/dashboard/equipment/{id}/downtime` | Equipment detail page |
 | `GET /api/v1/dashboard/executive-summary` | Executive view |
+| `GET /api/v1/operations/decisions` | Operations view — recent reroute decisions |
+| `GET /api/v1/operations/decisions/{id}` | Operations detail integration — decision, action and outcome |
+| `GET /api/v1/operations/loading-points` | Operations view — loading-bay capacity |
+| `GET /api/v1/operations/loading-points/{id}` | Operations detail integration — bay and truck slots |
 | `GET /api/v1/dashboard/audit-logs` | Audit log page |
 | `GET /api/v1/dashboard/audit-logs/verify` | Audit log page — chain-integrity indicator |
 | `GET/WS /api/v1/events` | Live updates on all of the above |
@@ -94,9 +99,9 @@ correction workflow is ever needed, it's a new "superseding entry" action, not a
 
 ```
 I'm building the Next.js frontend for MaintainNexus, a predictive-maintenance dashboard.
-Two role-gated views: engineer (per-station technical dashboard, approve/reject work orders,
-risk-driver display) and executive (read-only downtime/cost rollup). A third supervisor view
-shares the engineer shell plus an escalation queue.
+Role-gated views: engineer (per-station technical dashboard, approve/reject work orders,
+risk-driver display), supervisor (shared engineer shell plus escalation queue), and executive
+(read-only downtime/cost rollup and operations visibility).
 
 Hard constraints:
 - I only call the documented FastAPI contract (auth, work-orders, dashboard, events endpoints
@@ -104,6 +109,7 @@ Hard constraints:
   backend should compute (downtime, cost saved, risk score).
 - RBAC is enforced server-side; my frontend role-gating is UX only, not the real security boundary.
 - Live updates come from SSE/WebSocket against /api/v1/events, not polling.
+- Operations reads use the authenticated FastAPI GET endpoints directly; the internal reroute POST is never exposed to the browser.
 - Use server components to fetch role-scoped data server-side where practical.
 - The audit log page never offers edit/delete — those tables are insert-only server-side, and I
   render (not compute) the chain-integrity status from /audit-logs/verify.
