@@ -3,6 +3,7 @@ import { PageHeader, StatCard, StatusBadge } from "@/components/ui";
 import { RiskTrend } from "@/components/risk-trend";
 import { ApiNotice } from "@/components/api-notice";
 import { EquipmentState } from "@/components/equipment-monitor";
+import { EquipmentAttentionList } from "@/components/equipment-attention-list";
 import { EquipmentAlerts } from "@/components/equipment-alerts";
 import { WorkOrderQueue } from "@/components/work-order-queue";
 import Link from "@/components/navigation-link";
@@ -141,33 +142,10 @@ export default async function DashboardPage({
                     label="Equipment monitoring unavailable"
                   />
                 )}
-                {equipment
-                  .filter((row) =>
-                    ["FAILURE_DETECTED", "APPROACHING_THRESHOLD"].includes(
-                      row.state,
-                    ),
-                  )
-                  .map((row) => (
-                    <div className="fleet-row" key={row.equipment_id}>
-                      <Link
-                        href={`/equipment/${encodeURIComponent(row.equipment_id)}`}
-                      >
-                        {row.equipment_id}
-                      </Link>
-                      <EquipmentState state={row.state} />
-                    </div>
-                  ))}
-                {monitoring.available &&
-                  !equipment.some((row) =>
-                    ["FAILURE_DETECTED", "APPROACHING_THRESHOLD"].includes(
-                      row.state,
-                    ),
-                  ) && (
-                    <Empty>
-                      No evaluated equipment currently requires attention.
-                      Unscored equipment is listed separately.
-                    </Empty>
-                  )}
+                <EquipmentAttentionList
+                  equipment={equipment}
+                  available={monitoring.available}
+                />
               </section>
             </div>
             <section className="panel" id="work-orders">

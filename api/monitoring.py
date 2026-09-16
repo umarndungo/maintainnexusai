@@ -35,7 +35,7 @@ from ml.scoring import METADATA
 router = APIRouter(
     prefix="/api/v1/monitoring",
     tags=["Monitoring"],
-    dependencies=[Depends(require_roles("engineer", "supervisor"))],
+    dependencies=[Depends(require_roles("engineer", "supervisor", "executive"))],
 )
 
 # Separate router for the ETL Load/score-update calls — internal-service
@@ -123,12 +123,14 @@ def _reading_from_row(record: EquipmentReading) -> dict:
 
 
 def _accessible(reading: dict, user: dict) -> bool:
-    """Supervisors see every station. A station-scoped user (engineer,
-    technician) sees their own stations' equipment plus any reading that
-    doesn't carry a station_id at all — telemetry today rarely sets one
-    (see etl.telemetry.generate_telemetry), so treating "unknown station"
-    as hidden would leave the monitoring workspace empty for everyone."""
-    if user["role"] == "supervisor":
+    """Supervisors and executives see every station — same cross-station
+    exemption as api.dashboard._accessible_equipment_ids. A station-scoped
+    user (engineer, technician) sees their own stations' equipment plus any
+    reading that doesn't carry a station_id at all — telemetry today rarely
+    sets one (see etl.telemetry.generate_telemetry), so treating "unknown
+    station" as hidden would leave the monitoring workspace empty for
+    everyone."""
+    if user["role"] in {"supervisor", "executive"}:
         return True
     station_id = reading.get("station_id")
     if station_id is None:
@@ -137,7 +139,7 @@ def _accessible(reading: dict, user: dict) -> bool:
 
 
 @router.get("/equipment", status_code=status.HTTP_200_OK)
-async def list_equipment(user: Annotated[dict, Depends(require_roles("engineer", "supervisor"))]):
+async def list_equipment(user: Annotated[dict, Depends(require_roles("engineer", "supervisor", "executive"))]):
     """Return the most recent reading for each accessible piece of equipment."""
     db = SessionLocal()
     try:
@@ -166,7 +168,7 @@ async def list_equipment(user: Annotated[dict, Depends(require_roles("engineer",
 @router.get("/equipment/{equipment_id}/history", status_code=status.HTTP_200_OK)
 async def equipment_history(
     equipment_id: str,
-    user: Annotated[dict, Depends(require_roles("engineer", "supervisor"))],
+    user: Annotated[dict, Depends(require_roles("engineer", "supervisor", "executive"))],
 ):
     """Return recorded readings for one piece of equipment, oldest first."""
     db = SessionLocal()

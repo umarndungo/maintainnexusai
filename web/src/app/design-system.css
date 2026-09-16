@@ -743,18 +743,27 @@ em {
   align-items: center;
   gap: 8px;
 }
-.table-pagination button {
+.table-pagination :is(button, a) {
   min-height: 32px;
   min-width: 32px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--white);
   padding: 4px 8px;
+  text-decoration: none;
+  color: inherit;
 }
-.table-pagination button.current {
+.table-pagination :is(button, a).current {
   background: var(--brand-red);
   border-color: var(--brand-red);
   color: var(--white);
+}
+.table-pagination span[aria-disabled="true"] {
+  min-height: 32px;
+  min-width: 32px;
+  padding: 4px 8px;
+  color: var(--faint);
+  opacity: 0.55;
 }
 .filter-bar {
   margin: 0 0 20px;
