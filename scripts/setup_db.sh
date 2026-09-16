@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Bring up Postgres + Redis via docker-compose.yml and run the one-shot
-# db_migrations job, which creates the schema, the APP_DB_USER app role, and
-# its least-privilege grants (see database/run_migrations.py). This script
-# does not duplicate that SQL — it just gets Compose's own services to run
-# it in the right order with a valid .env.
+# db_migrations job, which creates the schema, seeds missing demo credentials,
+# creates the APP_DB_USER app role, and applies its least-privilege grants (see
+# database/run_migrations.py and database/seed_credentials.py). This script
+# does not duplicate that work — it just gets Compose's own services to run it
+# once in the right order with a valid .env.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -67,9 +68,9 @@ if [[ "$status" != "healthy" ]]; then
   exit 1
 fi
 
-echo "Running schema migrations + app role/grants (database/run_migrations.py)..."
+echo "Running schema migrations, credential seed, and app role/grants..."
 "${DC[@]}" run --rm db_migrations
 
 echo
-echo "Done. Database, app user, and permissions are set up."
+echo "Done. Database, seeded credentials, app user, and permissions are set up."
 echo "Bring up the rest of the stack with: ${DC[*]} up -d"
