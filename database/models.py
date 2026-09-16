@@ -18,6 +18,19 @@ import datetime
 Base = declarative_base()
 
 
+class StaffCredential(Base):
+    """Persisted password credentials for every human login identity."""
+
+    __tablename__ = "staff_credentials"
+
+    user_id = Column(String, primary_key=True)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, nullable=False)
+    technician_id = Column(String, nullable=True)
+    must_change_password = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
+
+
 class WorkOrderRecord(Base):
     """
     Represents a work order dispatched to a technician.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'screens/home_shell_screen.dart';
+import 'screens/change_password_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'services/deep_link_service.dart';
 import 'state/app_controller.dart';
@@ -51,6 +52,7 @@ class _AppRootState extends State<_AppRoot> {
   DeepLinkService? _deepLinks;
   AppController? _appController;
   bool _lastSignedIn = false;
+  bool _lastMustChangePassword = false;
 
   @override
   void didChangeDependencies() {
@@ -59,18 +61,33 @@ class _AppRootState extends State<_AppRoot> {
     final app = context.read<AppController>();
     _appController = app;
     _lastSignedIn = app.signedIn;
-    _deepLinks = DeepLinkService(navigatorKey: _navigatorKey, appController: app)..start();
+    _lastMustChangePassword = app.mustChangePassword;
+    _deepLinks = DeepLinkService(
+      navigatorKey: _navigatorKey,
+      appController: app,
+    )..start();
     app.addListener(_handleAuthChange);
   }
 
   void _handleAuthChange() {
     final app = _appController;
-    if (app == null || app.signedIn == _lastSignedIn) return;
+    if (app == null ||
+        (app.signedIn == _lastSignedIn &&
+            app.mustChangePassword == _lastMustChangePassword)) {
+      return;
+    }
     _lastSignedIn = app.signedIn;
+    _lastMustChangePassword = app.mustChangePassword;
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
     navigator.pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => app.signedIn ? const HomeShellScreen() : const SignInScreen()),
+      MaterialPageRoute<void>(
+        builder: (_) => !app.signedIn
+            ? const SignInScreen()
+            : app.mustChangePassword
+            ? const ChangePasswordScreen()
+            : const HomeShellScreen(),
+      ),
       (route) => false,
     );
   }
@@ -96,7 +113,11 @@ class _AppRootState extends State<_AppRoot> {
           // Still used for the very first build (correct if a restored
           // session already resolved signedIn before first paint);
           // every transition after that goes through _handleAuthChange.
-          home: app.signedIn ? const HomeShellScreen() : const SignInScreen(),
+          home: !app.signedIn
+              ? const SignInScreen()
+              : app.mustChangePassword
+              ? const ChangePasswordScreen()
+              : const HomeShellScreen(),
         );
       },
     );

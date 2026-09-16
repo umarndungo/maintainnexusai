@@ -9,7 +9,7 @@ export type ApiResult<T> = {
 };
 
 export type UserRole = "engineer" | "supervisor" | "executive" | "technician";
-export type CurrentUser = { id: string; name?: string; role: UserRole; station_ids: string[] };
+export type CurrentUser = { id: string; name?: string; role: UserRole; station_ids: string[]; must_change_password?: boolean };
 export type Prediction = { failure_probability: number; failure_predicted: boolean; risk_level: string; threshold: number; prediction_horizon_hours: number; target?: string; model_version?: string; prediction_id?: string; timestamp?: string; top_features?: string[] };
 export type Thresholds = { failure_probability: number; warning_probability: number | null; prediction_horizon_hours: number; source: string; target?: string; sensor_limits: null };
 export type EquipmentReading = { id: number; equipment_id: string; station_id?: string; telemetry: Record<string, string | number | null>; prediction: Prediction | null; state: string; evaluation_reason?: string; received_at: string };
@@ -67,6 +67,22 @@ export type AuditLog = {
   payload: string;
   timestamp: string;
 };
+
+export type LoadingSlot = { id: number; truck_code: string; status: string; scheduled_arrival: string };
+export type LoadingPoint = { id: number; bay_code: string; equipment_id?: string; station_id?: string; supported_product?: string; capacity_status: string };
+export type LoadingPointDetail = LoadingPoint & { slots: LoadingSlot[] };
+export type OperationalAction = { id: number; action_type: string; truck_code: string; status: string; idempotency_key: string };
+export type OperationalOutcome = { action_success: boolean; actual_failure?: boolean | null; actual_delay_minutes?: number | null; alternate_bay_completed?: boolean | null };
+export type Decision = {
+  id: number;
+  reading_id?: number | null;
+  decision_type: string;
+  reason: string;
+  affected_equipment_id?: string;
+  requires_human_approval: boolean;
+  created_at: string;
+};
+export type DecisionDetail = Decision & { policy_version?: string | null; action: OperationalAction | null; outcome: OperationalOutcome | null };
 
 export type HseOverview = {
   tank_id: string;
@@ -164,4 +180,21 @@ export function getMaintenanceData(token: string) {
     request<RecentAlert[]>("/api/v1/alerts/recent", token),
     request<{ available_technicians: Technician[]; source: string }>("/api/v1/hr/technicians/available", token),
   ]);
+}
+
+// Decision engine (Predict -> Decide -> Act loading-point rerouting). See
+// api/operations.py — read-only operations views for engineer/supervisor/executive.
+export function getOperationsData(token: string) {
+  return Promise.all([
+    request<{ decisions: Decision[] }>("/api/v1/operations/decisions", token),
+    request<{ loading_points: LoadingPoint[] }>("/api/v1/operations/loading-points", token),
+  ]);
+}
+
+export function getDecision(decisionId: number, token: string) {
+  return request<DecisionDetail>(`/api/v1/operations/decisions/${decisionId}`, token);
+}
+
+export function getLoadingPoint(loadingPointId: number, token: string) {
+  return request<LoadingPointDetail>(`/api/v1/operations/loading-points/${loadingPointId}`, token);
 }

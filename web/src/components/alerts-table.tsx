@@ -1,11 +1,76 @@
 ﻿"use client";
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { formatTimestamp } from "@/lib/presentation";
 import Link from "./navigation-link";
-import { EquipmentAlerts } from "./equipment-alerts";
+import { AlertEvidence } from "./alert-evidence";
 import { StatusBadge } from "./ui";
 import { TablePagination } from "./table-pagination";
 import type { RecentAlert, Technician, WorkOrder } from "@/lib/api";
+
+function AlertReviewDrawer({
+  alert,
+  orders,
+  technicians,
+  allowAssignment,
+  ordersAvailable,
+  onClose,
+}: {
+  alert: RecentAlert;
+  orders: WorkOrder[];
+  technicians?: Technician[];
+  allowAssignment: boolean;
+  ordersAvailable: boolean;
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const title = useId();
+
+  useEffect(() => {
+    const element = dialog.current;
+    const previous = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    element?.showModal();
+    document.body.style.overflow = "hidden";
+    return () => {
+      element?.close();
+      document.body.style.overflow = overflow;
+      previous?.focus();
+    };
+  }, []);
+
+  return (
+    <dialog
+      className="alert-detail-drawer"
+      ref={dialog}
+      aria-labelledby={title}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <header>
+        <div>
+          <span className="eyebrow">ALERT REVIEW</span>
+          <h2 id={title}>{alert.equipment_id}</h2>
+        </div>
+        <button type="button" onClick={onClose} autoFocus aria-label="Close alert review">
+          Close
+        </button>
+      </header>
+      {alert.telemetry?.provenance && (
+        <p className="chart-source">Source: {alert.telemetry.provenance}</p>
+      )}
+      <AlertEvidence
+        alerts={[alert]}
+        orders={orders}
+        technicians={technicians}
+        allowAssignment={allowAssignment}
+        ordersAvailable={ordersAvailable}
+      />
+    </dialog>
+  );
+}
+
 export function AlertsTable({
   alerts,
   orders,
@@ -33,7 +98,7 @@ export function AlertsTable({
   const current = Math.min(page, Math.max(1, Math.ceil(filtered.length / 10)));
   const detail = alerts.find((alert) => alert.task_id === selected);
   return (
-    <div className={detail ? "alerts-layout" : ""}>
+    <div>
       <section className="panel">
         <div className="filter-bar">
           <label>
@@ -165,29 +230,14 @@ export function AlertsTable({
         />
       </section>
       {detail && (
-        <aside
-          className="alert-detail-pane"
-          aria-label="Selected alert details"
-        >
-          <div className="panel-header">
-            <h3>Alert details</h3>
-            <button
-              className="icon-button"
-              aria-label="Close alert details"
-              onClick={() => setSelected(null)}
-              type="button"
-            >
-              ×
-            </button>
-          </div>
-          <EquipmentAlerts
-            alerts={[detail]}
-            orders={orders}
-            technicians={technicians}
-            allowAssignment={allowAssignment}
-            ordersAvailable={ordersAvailable}
-          />
-        </aside>
+        <AlertReviewDrawer
+          alert={detail}
+          orders={orders}
+          technicians={technicians}
+          allowAssignment={allowAssignment}
+          ordersAvailable={ordersAvailable}
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   );

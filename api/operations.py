@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/api/v1/operations",
     tags=["Operations"],
-    dependencies=[Depends(require_roles("engineer", "supervisor"))],
+    dependencies=[Depends(require_roles("engineer", "supervisor", "executive"))],
 )
 
 # The Act step itself is internal-only — called by the Celery pipeline,
@@ -204,7 +204,7 @@ async def reassign_loading_point(body: ReassignmentRequest):
 
 
 @router.get("/loading-points", status_code=status.HTTP_200_OK)
-async def list_loading_points(user: Annotated[dict, Depends(require_roles("engineer", "supervisor"))]):
+async def list_loading_points(user: Annotated[dict, Depends(require_roles("engineer", "supervisor", "executive"))]):
     db = SessionLocal()
     try:
         bays = db.query(LoadingPoint).order_by(LoadingPoint.id).all()
@@ -227,7 +227,7 @@ async def list_loading_points(user: Annotated[dict, Depends(require_roles("engin
 @router.get("/loading-points/{loading_point_id}", status_code=status.HTTP_200_OK)
 async def get_loading_point(
     loading_point_id: int,
-    user: Annotated[dict, Depends(require_roles("engineer", "supervisor"))],
+    user: Annotated[dict, Depends(require_roles("engineer", "supervisor", "executive"))],
 ):
     db = SessionLocal()
     try:
@@ -263,7 +263,7 @@ async def get_loading_point(
 
 
 @router.get("/decisions", status_code=status.HTTP_200_OK)
-async def list_decisions(user: Annotated[dict, Depends(require_roles("engineer", "supervisor"))]):
+async def list_decisions(user: Annotated[dict, Depends(require_roles("engineer", "supervisor", "executive"))]):
     db = SessionLocal()
     try:
         decisions = db.query(Decision).order_by(Decision.id.desc()).limit(100).all()
@@ -287,7 +287,7 @@ async def list_decisions(user: Annotated[dict, Depends(require_roles("engineer",
 @router.get("/decisions/{decision_id}", status_code=status.HTTP_200_OK)
 async def get_decision(
     decision_id: int,
-    user: Annotated[dict, Depends(require_roles("engineer", "supervisor"))],
+    user: Annotated[dict, Depends(require_roles("engineer", "supervisor", "executive"))],
 ):
     db = SessionLocal()
     try:

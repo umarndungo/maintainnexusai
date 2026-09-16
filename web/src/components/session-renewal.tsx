@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 export function SessionRenewal() {
-  const [message, setMessage] = useState("");
+  const [, setMessage] = useState("");
   useEffect(() => {
     let busy = false;
     let stopped = false;
@@ -31,5 +31,5 @@ export function SessionRenewal() {
     window.addEventListener("online", renew);
     return () => { stop(); window.removeEventListener("session-signout", stop); document.removeEventListener("visibilitychange", renew); window.removeEventListener("online", renew); };
   }, []);
-  return message ? <p className="notice" role="status">{message}</p> : null;
+  return null;
 }

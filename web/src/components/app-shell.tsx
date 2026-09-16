@@ -50,17 +50,18 @@ export function AppShell({
     ...(!readOnly
       ? [{ href: "/approvals", label: "Approvals", icon: "approvals" as const }]
       : []),
+    { href: "/operations", label: "Operations", icon: "clock" as const },
     ...(user.role === "supervisor" || readOnly
       ? [{ href: "/reports", label: "Reports", icon: "reports" as const }]
       : []),
     { href: "/audit", label: "Audit Log", icon: "audit" },
   ];
   if (user.role === "supervisor") {
-    const priority = ["/supervisor", "/approvals", "/work-orders", "/equipment", "/monitoring", "/alerts", "/reports", "/audit"];
+    const priority = ["/supervisor", "/approvals", "/operations", "/work-orders", "/equipment", "/monitoring", "/alerts", "/reports", "/audit"];
     links.sort((a, b) => priority.indexOf(a.href) - priority.indexOf(b.href));
   }
   if (readOnly) {
-    const priority = ["/executive", "/reports", "/equipment", "/monitoring", "/alerts", "/audit"];
+    const priority = ["/executive", "/operations", "/reports", "/equipment", "/monitoring", "/alerts", "/audit"];
     links.sort((a, b) => priority.indexOf(a.href) - priority.indexOf(b.href));
   }
   const initials = (user.name ?? user.id)

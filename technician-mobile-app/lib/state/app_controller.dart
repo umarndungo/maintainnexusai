@@ -22,6 +22,7 @@ class AppController extends ChangeNotifier {
 
   static const _themePrefKey = 'maintainnexus.theme_mode';
   static const _employeeIdPrefKey = 'maintainnexus.employee_id';
+  static const _technicianIdPrefKey = 'maintainnexus.technician_id';
 
   final ApiClient _api;
 
@@ -62,15 +63,24 @@ class AppController extends ChangeNotifier {
   // ---------------------------------------------------------------------
   // Session
   //
-  // POST /api/v1/auth/login takes only a user_id, no password (see
-  // api/auth.py's USERS dict) and returns a 1-hour JWT — there's no
-  // refresh-token endpoint on the backend, so instead of managing token
-  // expiry directly this just re-runs login with the saved employee id
-  // whenever a call comes back 401 (see [_authed]).
+  // POST /api/v1/auth/login requires a password and returns a 1-hour JWT.
+  // Passwords are intentionally not persisted, so an old ID-only session
+  // cannot be silently replayed after an app restart.
   // ---------------------------------------------------------------------
   bool _signedIn = false;
   String employeeId = '';
   bool get signedIn => _signedIn;
+
+  /// The roster id (e.g. "TECH-101") resolved from the login response —
+  /// see api/auth.py's `_lookup_user`. Null for non-technician demo
+  /// logins (engineer-demo, etc.) or if this build's saved session
+  /// predates this field. [loadWorkOrders] falls back to the old
+  /// unscoped behavior whenever this is null, rather than showing an
+  /// empty list.
+  String? technicianId;
+
+  bool _mustChangePassword = false;
+  bool get mustChangePassword => _mustChangePassword;
 
   bool _restoringSession = true;
   bool get restoringSession => _restoringSession;
@@ -87,13 +97,8 @@ class AppController extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final savedId = prefs.getString(_employeeIdPrefKey);
       if (savedId != null && savedId.isNotEmpty) {
-        final ok = await signIn(savedId);
-        if (!ok) {
-          await prefs.remove(_employeeIdPrefKey);
-        }
-        _restoringSession = false;
-        notifyListeners();
-        return;
+        await prefs.remove(_employeeIdPrefKey);
+        await prefs.remove(_technicianIdPrefKey);
       }
     } catch (_) {
       // No stored preferences (e.g. first web load) — fall through to sign-in.
@@ -104,10 +109,15 @@ class AppController extends ChangeNotifier {
 
   /// Best-effort, fire-and-forget — see the call site in [signIn] for why
   /// this is never awaited inline with the rest of the sign-in flow.
-  Future<void> _persistEmployeeId(String id) async {
+  Future<void> _persistSession(String id, String? techId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_employeeIdPrefKey, id);
+      if (techId != null) {
+        await prefs.setString(_technicianIdPrefKey, techId);
+      } else {
+        await prefs.remove(_technicianIdPrefKey);
+      }
     } catch (_) {
       // No persistence this run (e.g. first web load) — next app start
       // just lands back on the sign-in screen instead of auto-restoring.
@@ -116,18 +126,20 @@ class AppController extends ChangeNotifier {
 
   /// Returns true on success. On failure, [lastError] is set and the app
   /// stays on the sign-in screen.
-  Future<bool> signIn(String id) async {
+  Future<bool> signIn(String id, String password) async {
     lastError = null;
     try {
-      await _api.login(id);
+      final result = await _api.login(id, password);
       employeeId = id;
+      technicianId = result.technicianId;
+      _mustChangePassword = result.mustChangePassword;
       _signedIn = true;
       // Fired before the best-effort persistence below (same ordering
       // as setThemeMode) -- a slow or unresponsive SharedPreferences
       // must never stall the UI from reflecting a successful sign-in,
       // which awaiting it inline here would otherwise do.
       notifyListeners();
-      unawaited(_persistEmployeeId(id));
+      unawaited(_persistSession(id, result.technicianId));
       await loadWorkOrders();
       return true;
     } on ApiException catch (exc) {
@@ -145,28 +157,46 @@ class AppController extends ChangeNotifier {
     _signedIn = false;
     _workOrders.clear();
     _api.accessToken = null;
+    technicianId = null;
+    _mustChangePassword = false;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_employeeIdPrefKey);
+      await prefs.remove(_technicianIdPrefKey);
     } catch (_) {
       // Best-effort.
     }
     notifyListeners();
   }
 
-  /// Wraps an authenticated call: on a 401 (expired token), silently
-  /// re-logs in with the saved employee id and retries once before
-  /// giving up — see the Session doc comment above for why there's no
-  /// separate refresh-token flow.
+  /// Wraps an authenticated call and surfaces a 401 to the caller. There is
+  /// no refresh-token endpoint, and passwords are not stored for replay.
   Future<T> _authed<T>(Future<T> Function() call) async {
     try {
       return await call();
     } on ApiException catch (exc) {
       if (exc.statusCode == 401 && employeeId.isNotEmpty) {
-        await _api.login(employeeId);
-        return await call();
+        rethrow;
       }
       rethrow;
+    }
+  }
+
+  Future<bool> changePassword(String currentPassword, String newPassword) async {
+    lastError = null;
+    try {
+      await _api.changePassword(currentPassword, newPassword);
+      _mustChangePassword = false;
+      notifyListeners();
+      return true;
+    } on ApiException catch (exc) {
+      lastError = exc.message;
+      notifyListeners();
+      return false;
+    } catch (_) {
+      lastError = 'Could not reach the server. Check your connection and try again.';
+      notifyListeners();
+      return false;
     }
   }
 
@@ -249,17 +279,14 @@ class AppController extends ChangeNotifier {
   }
 
   /// Fetches every work order plus recent alerts (for risk enrichment),
-  /// maps each into a [WorkOrder], and keeps only the ones a technician
-  /// can actually act on (DISPATCHED / IN_PROGRESS / COMPLETED).
+  /// maps each into a [WorkOrder], and keeps only the ones this
+  /// technician can actually act on: DISPATCHED / IN_PROGRESS /
+  /// COMPLETED, and — when [technicianId] is known — assigned to them.
   ///
-  /// Deliberately NOT filtered by "assigned to me": the backend's
-  /// technician_id on a work order (e.g. "TECH-101", from
-  /// api/technicians.py's roster) is a separate id space from the login
-  /// identity here (e.g. "tech-demo", from api/auth.py's USERS dict) —
-  /// there is no mapping between them yet. Filtering by that match would
-  /// silently show an empty list to every technician. Once a real
-  /// per-technician login exists this should switch to filtering on
-  /// `assigned_technician_id == employeeId`.
+  /// [technicianId] comes back null for a login that didn't resolve to a
+  /// roster id (e.g. engineer-demo, or a session persisted before this
+  /// field existed); rather than showing an empty list in that case,
+  /// this falls back to the old unscoped behavior.
   Future<void> loadWorkOrders() async {
     lastError = null;
     try {
@@ -281,6 +308,7 @@ class AppController extends ChangeNotifier {
             return WorkOrder.fromApi(json, matchingAlert: matchingAlert);
           })
           .where((wo) => wo.status != WorkOrderStatus.scheduled)
+          .where((wo) => technicianId == null || wo.assignedTechnicianId == technicianId)
           .toList();
 
       _workOrders

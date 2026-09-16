@@ -51,15 +51,18 @@ This document defines that end-to-end contract.
 | Model evaluation                     | Implemented                     | ML              |
 | Real-time scorer                     | Implemented                     | ML              |
 | Prediction API integration           | To be implemented               | Backend         |
-| Business decision engine             | To be implemented               | Backend         |
+| Business decision engine             | Implemented                     | Backend         |
 | Alert generation                     | To be implemented               | Backend         |
-| Operational mitigation workflow      | To be implemented               | Backend/Product |
-| Outcome/feedback capture             | To be implemented               | Backend         |
+| Operational mitigation workflow      | Implemented for loading-point rerouting | Backend/Product |
+| Outcome/feedback capture             | Implemented for operational actions | Backend         |
 | Model monitoring/retraining workflow | Future phase                    | ML/Data         |
 
-Therefore:
-
-> **Predict is implemented. Decide → Act → Learn are defined by this contract but require application/backend implementation.**
+Therefore, the current implementation supports the loading-point golden path:
+the internal decision engine can mark a bay unavailable, reassign a scheduled
+truck to an alternate bay, and persist the decision, action, and outcome. The
+browser exposes read-only decision and loading-point views at `/operations` to
+engineers, supervisors, and executives. Broader decision policies and model
+monitoring remain future work.
 
 ---
 
@@ -1307,7 +1310,7 @@ The complete MaintainNexusAI operational loop will be considered implemented whe
 * [ ] LOW/MEDIUM/HIGH risk is correctly interpreted.
 * [ ] Asset criticality can influence operational decisions.
 * [ ] Existing alerts and maintenance status are considered.
-* [ ] Decision rules are persisted/auditable.
+* [x] Loading-point reroute decisions are persisted/auditable.
 
 ### Act
 
@@ -1316,14 +1319,14 @@ The complete MaintainNexusAI operational loop will be considered implemented whe
 * [ ] Duplicate alerts are prevented.
 * [ ] Responsible personnel can be notified.
 * [ ] Affected operations can be identified where operational data exists.
-* [ ] Actions taken can be recorded.
-* [ ] Human approval is retained for safety-critical actions.
+* [x] Loading-point actions taken can be recorded.
+* [x] Human approval remains separate for safety-critical physical repair actions.
 
 ### Learn
 
 * [ ] Predictions are persisted.
 * [ ] Actions are persisted.
-* [ ] Actual outcomes are persisted.
+* [x] Operational action outcomes are persisted.
 * [ ] Predictions can be matched to actual failures.
 * [ ] False positives and false negatives can be identified.
 * [ ] Maintenance outcomes can be recorded.

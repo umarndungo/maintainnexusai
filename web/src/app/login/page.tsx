@@ -7,6 +7,7 @@ import { Brand, Icon } from "@/components/ui";
 export default function LoginPage() {
   const router = useRouter();
   const [userId, setUserId] = useState("engineer-demo");
+  const [password, setPassword] = useState("EngineerDemo-2026");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -17,7 +18,7 @@ export default function LoginPage() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({ user_id: userId, password }),
       });
       const result = await response.json();
       if (!response.ok)
@@ -26,9 +27,7 @@ export default function LoginPage() {
             ? result.detail
             : "Sign-in failed. Check your account ID and try again.",
         );
-      router.replace(
-        workspacePath(result.user.role),
-      );
+      router.replace(result.user.must_change_password ? "/change-password" : workspacePath(result.user.role));
       router.refresh();
     } catch (failure) {
       setError(
@@ -118,6 +117,20 @@ export default function LoginPage() {
                 {error}
               </p>
             )}
+            <label htmlFor="password">Password</label>
+            <div className="auth-input">
+              <Icon name="audit" />
+              <input
+                id="password"
+                name="password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+                disabled={busy}
+              />
+            </div>
             <button className="auth-submit" disabled={busy} type="submit">
               {busy ? "Signing in…" : "Sign in"}
               <Icon name="arrow" />
@@ -128,9 +141,8 @@ export default function LoginPage() {
             <div>
               <strong>Demo access</strong>
               <p>
-                Use engineer-demo, supervisor-demo, or executive-demo. Your
-                account determines your role and station access. Password and
-                corporate SSO sign-in are not available.
+                Use a seeded account ID and password. Your account determines
+                your role and station access; first login requires a password change.
               </p>
             </div>
           </div>
