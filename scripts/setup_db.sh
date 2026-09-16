@@ -69,7 +69,7 @@ if [[ "$status" != "healthy" ]]; then
 fi
 
 echo "Running schema migrations, credential seed, and app role/grants..."
-"${DC[@]}" run --rm db_migrations
+"${DC[@]}" run --rm --build db_migrations
 
 echo
 echo "Done. Database, seeded credentials, app user, and permissions are set up."
