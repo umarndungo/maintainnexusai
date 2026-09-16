@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { Lato } from "next/font/google";
 import "./globals.css";
 import "./design-system.css";
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
   icons: { icon: "/brand/assetguard-mark.svg" },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"

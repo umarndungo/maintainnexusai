@@ -28,6 +28,8 @@ ML endpoint is never exposed to browser calls or given a browser service token.
 | Lifecycle evidence | GET `/maintenance/work-orders/{id}/lifecycle` | Actors, notes, transitions and recorded hash references; hashes are not presented as verified integrity |
 | Equipment downtime | GET `/dashboard/equipment/{id}/downtime` | Recorded dispatch-to-completion windows and open intervals, separate from simulated overview metrics |
 | Executive | GET `/dashboard/executive-summary` | Recorded downtime and open/completed/total windows first; scalar indicator labeled as a backend heuristic; savings, dated uptime and comparison only when supplied |
+| Operations | GET `/operations/decisions`, `/operations/loading-points` | `/operations` page shows recent automated reroute decisions and loading-bay capacity for engineer, supervisor and executive roles; executive access is read-only |
+| Operations details | GET `/operations/decisions/{id}`, `/operations/loading-points/{id}` | Typed client accessors are available for decision action/outcome and bay slot details; the list page does not trigger operational actions |
 | Executive equipment access | Same monitoring/history reads | Read-only equipment, alerts and maintenance progress; no assignment or repair controls |
 | Audit | GET `/dashboard/audit-logs`, optional `/dashboard/audit-logs/verify` | Latest 50 returned records, filters over that subset, explicit missing/malformed verification; no integrity claim based on loading records |
 | Live updates | GET `/events` through `/api/events` | Cookie-authorized SSE, reconnect, committed-event refresh and failure notifications |
@@ -79,9 +81,11 @@ provided; legacy values retain reported-unit labeling.
 - Demo identity is not production authentication. The demo technician identity
   is not linked to the HR assignment IDs, so adding a technician web execution
   flow would require that backend identity mapping first.
-- HR/inventory and HSE remain simulated sources. SMS delivery, loading-point
-  reassignment, multi-worker SSE and mobile/offline integrations remain outside
-  this frontend reconciliation.
+- HR/inventory and HSE remain simulated sources. SMS delivery, broader
+  multi-worker SSE and mobile/offline integrations remain outside this frontend
+  reconciliation. Loading-point reassignment is internal-service-only; the
+  frontend reads its persisted decision, action and outcome records but cannot
+  trigger a reroute.
 
 ## Verification
 

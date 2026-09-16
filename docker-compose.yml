@@ -42,7 +42,7 @@ services:
 
   db_migrations:
     build: .
-    command: python -m database.run_migrations
+    command: sh -c "python -m database.run_migrations && python -m database.seed_credentials"
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-change-this-password}@${POSTGRES_HOST:-postgres_db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-maintain_db}
       - APP_DB_USER=${APP_DB_USER:-maintain_app}

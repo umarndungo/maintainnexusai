@@ -12,8 +12,8 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
-  final _idController = TextEditingController(text: 'TC-1042');
-  final _passcodeController = TextEditingController(text: '••••••');
+  final _idController = TextEditingController(text: 'tech-demo');
+  final _passcodeController = TextEditingController(text: 'TechDemo-2026');
   bool _submitting = false;
 
   @override
@@ -25,9 +25,8 @@ class _SignInScreenState extends State<SignInScreen> {
 
   Future<void> _signIn() async {
     setState(() => _submitting = true);
-    await Future<void>.delayed(const Duration(milliseconds: 450));
-    if (!mounted) return;
-    context.read<AppController>().signIn(_idController.text.trim());
+    await context.read<AppController>().signIn(_idController.text.trim(), _passcodeController.text);
+    if (mounted) setState(() => _submitting = false);
   }
 
   @override
@@ -91,7 +90,7 @@ class _SignInScreenState extends State<SignInScreen> {
               const SizedBox(height: 4),
               Center(
                 child: Text(
-                  'Demo user IDs are prefilled. Sign-in uses local\nmock state; passcode is not verified in this build.',
+                  'Demo credentials are prefilled for this build. Passwords are verified by the API.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall,
                 ),
@@ -111,7 +110,7 @@ class _SignInScreenState extends State<SignInScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              Center(child: MonoText('TC-1042 · STN-B', fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
+              Center(child: MonoText('tech-demo · STN-B', fontSize: 11, color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
               const SizedBox(height: 24),
             ],
           ),

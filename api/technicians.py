@@ -59,6 +59,7 @@ _CERT_SETS = [
 
 
 def _generate_technicians():
+    rng = random.Random(20260916)
     technicians = []
     for index, name in enumerate(_TECHNICIAN_NAMES, start=101):
         if index == 103:
@@ -68,7 +69,7 @@ def _generate_technicians():
         elif index == 109:
             certs = ["GENERAL_MAINTENANCE"]
         else:
-            certs = random.choice(_CERT_SETS)
+            certs = rng.choice(_CERT_SETS)
 
         technicians.append(
             {

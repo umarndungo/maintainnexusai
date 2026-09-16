@@ -29,7 +29,7 @@ import os
 import uuid
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import sessionmaker
 
@@ -90,6 +90,21 @@ def test_migration_enforces_insert_only_grants(monkeypatch, test_database_url, a
 
     # Running the migration twice must succeed both times (idempotency).
     _run_migrations_against(monkeypatch, test_database_url, app_role_name, app_password)
+    migrated_engine = create_engine(test_database_url)
+    try:
+        migrated_tables = set(inspect(migrated_engine).get_table_names())
+        model_tables = {table.name for table in Base.metadata.sorted_tables}
+        assert model_tables <= migrated_tables
+        assert {
+            "staff_credentials",
+            "loading_points",
+            "loading_slots",
+            "decisions",
+            "operational_actions",
+            "operational_outcomes",
+        } <= migrated_tables
+    finally:
+        migrated_engine.dispose()
     _run_migrations_against(monkeypatch, test_database_url, app_role_name, app_password)
 
     app_url = create_engine(test_database_url).url.set(

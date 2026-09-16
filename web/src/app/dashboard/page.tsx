@@ -111,182 +111,173 @@ export default async function DashboardPage({
           These cards use equipment and work orders in your access scope. Simulator readings are labelled synthetic. Unscored
           equipment has not been established as healthy.
         </p>
-        <div className="dashboard-layout">
+        <div className="dashboard-columns">
           <div>
-            <div className="dashboard-columns">
-              <div>
-                {history && !history.available && (
-                  <ApiNotice
-                    result={history}
-                    label="Risk history unavailable"
-                  />
-                )}
-                <RiskTrend
-                  asOf={await getRequestTimestamp()}
-                  readings={history?.data?.readings ?? []}
-                  equipment={equipment}
-                  selected={asset}
-                  range={range}
-                />
-              </div>
-              <section className="panel">
-                <div className="panel-header">
-                  <h3>Equipment Requiring Attention</h3>
-                  <Link href="/equipment?state=FAILURE_DETECTED">
-                    View equipment
-                  </Link>
-                </div>
-                {!monitoring.available && (
-                  <ApiNotice
-                    result={monitoring}
-                    label="Equipment monitoring unavailable"
-                  />
-                )}
-                <EquipmentAttentionList
-                  equipment={equipment}
-                  available={monitoring.available}
-                />
-              </section>
-            </div>
-            <section className="panel" id="work-orders">
-              <div className="panel-header">
-                <h3>Recent Work Orders</h3>
-                <Link href="/work-orders">View all</Link>
-              </div>
-              <ApiNotice
-                result={orderResponse}
-                label="Work order service unavailable"
-              />
-              <WorkOrderQueue
-                orders={orders}
-                status={status}
-                supervisor={supervisor}
-              />
-            </section>
-            <section className="dashboard-columns">
-              <section className="panel">
-                <div className="panel-header">
-                  <h3>Fleet Evaluation</h3>
-                </div>
-                <div className="fleet-count">
-                  <strong>
-                    {monitoring.available ? equipment.length : "—"}
-                  </strong>
-                  <span>assets with recorded telemetry</span>
-                </div>
-                <div className="state-distribution" aria-hidden="true">
-                  {[
-                    "NORMAL",
-                    "APPROACHING_THRESHOLD",
-                    "FAILURE_DETECTED",
-                    "UNSCORED",
-                  ].map((state) => (
-                    <span
-                      key={state}
-                      className={state.toLowerCase()}
-                      style={{
-                        width: `${equipment.length ? (equipment.filter((row) => row.state === state).length / equipment.length) * 100 : 0}%`,
-                      }}
-                    />
-                  ))}
-                </div>
-                {[
-                  "NORMAL",
-                  "APPROACHING_THRESHOLD",
-                  "FAILURE_DETECTED",
-                  "UNSCORED",
-                ].map((state) => (
-                  <div className="fleet-row" key={state}>
-                    <EquipmentState state={state} />
-                    <b>
-                      {monitoring.available
-                        ? equipment.filter((row) => row.state === state).length
-                        : "—"}
-                    </b>
-                  </div>
-                ))}
-              </section>
-              <section className="panel">
-                <div className="panel-header">
-                  <h3>Backend Estimates</h3>
-                </div>
-                <div className="fleet-row">
-                  <span>Simulated uptime</span>
-                  <strong>{value(summary?.uptime_percentage, "%")}</strong>
-                </div>
-                <div className="fleet-row">
-                  <span>Simulated downtime</span>
-                  <strong>{value(summary?.downtime_minutes, "m")}</strong>
-                </div>
-                <p className="monitoring-context">
-                  Estimated from work orders created in the past 24h. Recorded
-                  equipment downtime is available in asset details.
-                </p>
-              </section>
-            </section>
+            {history && !history.available && (
+              <ApiNotice result={history} label="Risk history unavailable" />
+            )}
+            <RiskTrend
+              asOf={await getRequestTimestamp()}
+              readings={history?.data?.readings ?? []}
+              equipment={equipment}
+              selected={asset}
+              range={range}
+            />
           </div>
-          <aside className="dashboard-side">
-            <section className="panel">
-              <div className="panel-header">
-                <h3>Recent Alerts</h3>
-                <Link href="/alerts">View all</Link>
-              </div>
-              {!alertResponse.available && (
-                <ApiNotice
-                  result={alertResponse}
-                  label="Failure alert service unavailable"
-                />
-              )}
-              <div className="compact-list">
-                {alerts.slice(0, 5).map((alert, index) => (
-                  <Link
-                    className="compact-item"
-                    href={`/equipment/${encodeURIComponent(alert.equipment_id)}`}
-                    key={alert.task_id ?? index}
-                  >
-                    <StatusBadge status={alert.severity} />
-                    <strong>
-                      {alert.failure_code?.replaceAll("_", " ") ??
-                        "Maintenance alert"}
-                    </strong>
-                    <small>
-                      {alert.equipment_id} · {age(alert.received_at)}
-                    </small>
-                  </Link>
-                ))}
-              </div>
-              {alertResponse.available && !alerts.length && (
-                <Empty>No failure alerts recorded.</Empty>
-              )}
-            </section>
-            <section className="panel">
-              <div className="panel-header">
-                <h3>Pending Approvals</h3>
-                <Link href="/approvals">View all</Link>
-              </div>
-              {pending.slice(0, 5).map((order) => (
+          <section className="panel">
+            <div className="panel-header">
+              <h3>Equipment Requiring Attention</h3>
+              <Link href="/equipment?state=FAILURE_DETECTED">
+                View equipment
+              </Link>
+            </div>
+            {!monitoring.available && (
+              <ApiNotice
+                result={monitoring}
+                label="Equipment monitoring unavailable"
+              />
+            )}
+            <EquipmentAttentionList
+              equipment={equipment}
+              available={monitoring.available}
+            />
+          </section>
+        </div>
+        <section className="dashboard-grid">
+          <section className="panel">
+            <div className="panel-header">
+              <h3>Recent Alerts</h3>
+              <Link href="/alerts">View all</Link>
+            </div>
+            {!alertResponse.available && (
+              <ApiNotice
+                result={alertResponse}
+                label="Failure alert service unavailable"
+              />
+            )}
+            <div className="compact-list">
+              {alerts.slice(0, 5).map((alert, index) => (
                 <Link
                   className="compact-item"
-                  href={`/work-orders/${encodeURIComponent(order.work_order_id)}`}
-                  key={order.work_order_id}
+                  href={`/equipment/${encodeURIComponent(alert.equipment_id)}`}
+                  key={alert.task_id ?? index}
                 >
-                  <strong>{order.work_order_id}</strong>
+                  <StatusBadge status={alert.severity} />
+                  <strong>
+                    {alert.failure_code?.replaceAll("_", " ") ??
+                      "Maintenance alert"}
+                  </strong>
                   <small>
-                    {order.equipment_id} · {age(order.created_at)}
+                    {alert.equipment_id} · {age(alert.received_at)}
                   </small>
-                  <StatusBadge status={order.status} />
                 </Link>
               ))}
-              {!pending.length && (
-                <Empty>
-                  {orderResponse.available
-                    ? "No pending reviews."
-                    : "Approval queue unavailable."}
-                </Empty>
-              )}
-            </section>
-          </aside>
-        </div>
+            </div>
+            {alertResponse.available && !alerts.length && (
+              <Empty>No failure alerts recorded.</Empty>
+            )}
+          </section>
+          <section className="panel">
+            <div className="panel-header">
+              <h3>Pending Approvals</h3>
+              <Link href="/approvals">View all</Link>
+            </div>
+            {pending.slice(0, 5).map((order) => (
+              <Link
+                className="compact-item"
+                href={`/work-orders/${encodeURIComponent(order.work_order_id)}`}
+                key={order.work_order_id}
+              >
+                <strong>{order.work_order_id}</strong>
+                <small>
+                  {order.equipment_id} · {age(order.created_at)}
+                </small>
+                <StatusBadge status={order.status} />
+              </Link>
+            ))}
+            {!pending.length && (
+              <Empty>
+                {orderResponse.available
+                  ? "No pending reviews."
+                  : "Approval queue unavailable."}
+              </Empty>
+            )}
+          </section>
+        </section>
+        <section className="panel" id="work-orders">
+          <div className="panel-header">
+            <h3>Recent Work Orders</h3>
+            <Link href="/work-orders">View all</Link>
+          </div>
+          <ApiNotice
+            result={orderResponse}
+            label="Work order service unavailable"
+          />
+          <WorkOrderQueue
+            orders={orders}
+            status={status}
+            supervisor={supervisor}
+          />
+        </section>
+        <section className="dashboard-columns">
+          <section className="panel">
+            <div className="panel-header">
+              <h3>Fleet Evaluation</h3>
+            </div>
+            <div className="fleet-count">
+              <strong>{monitoring.available ? equipment.length : "—"}</strong>
+              <span>assets with recorded telemetry</span>
+            </div>
+            <div className="state-distribution" aria-hidden="true">
+              {[
+                "NORMAL",
+                "APPROACHING_THRESHOLD",
+                "FAILURE_DETECTED",
+                "UNSCORED",
+              ].map((state) => (
+                <span
+                  key={state}
+                  className={state.toLowerCase()}
+                  style={{
+                    width: `${equipment.length ? (equipment.filter((row) => row.state === state).length / equipment.length) * 100 : 0}%`,
+                  }}
+                />
+              ))}
+            </div>
+            {[
+              "NORMAL",
+              "APPROACHING_THRESHOLD",
+              "FAILURE_DETECTED",
+              "UNSCORED",
+            ].map((state) => (
+              <div className="fleet-row" key={state}>
+                <EquipmentState state={state} />
+                <b>
+                  {monitoring.available
+                    ? equipment.filter((row) => row.state === state).length
+                    : "—"}
+                </b>
+              </div>
+            ))}
+          </section>
+          <section className="panel">
+            <div className="panel-header">
+              <h3>Backend Estimates</h3>
+            </div>
+            <div className="fleet-row">
+              <span>Simulated uptime</span>
+              <strong>{value(summary?.uptime_percentage, "%")}</strong>
+            </div>
+            <div className="fleet-row">
+              <span>Simulated downtime</span>
+              <strong>{value(summary?.downtime_minutes, "m")}</strong>
+            </div>
+            <p className="monitoring-context">
+              Estimated from work orders created in the past 24h. Recorded
+              equipment downtime is available in asset details.
+            </p>
+          </section>
+        </section>
         <details className="panel">
           <summary>Alert evidence and maintenance handoff</summary>
           <div id="alerts">

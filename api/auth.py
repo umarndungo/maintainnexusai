@@ -7,25 +7,112 @@ import json
 import time
 from typing import Annotated
 
+import bcrypt
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from config import AUTH_SECRET, INTERNAL_SERVICE_TOKEN
+from database.db import SessionLocal
+from database.models import StaffCredential
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 bearer = HTTPBearer(auto_error=False)
 JWT_SECRET = AUTH_SECRET.encode()
 
 USERS = {
-    "tech-demo": {"name": "Demo Technician", "role": "technician", "station_ids": ["STATION-1"]},
+    "tech-demo": {"name": "Demo Technician", "role": "technician", "station_ids": ["STATION-1"], "technician_id": "TECH-101"},
     "engineer-demo": {"name": "Demo Engineer", "role": "engineer", "station_ids": ["STATION-1"]},
     "executive-demo": {"name": "Demo Executive", "role": "executive", "station_ids": []},
     "supervisor-demo": {"name": "Demo Supervisor", "role": "supervisor", "station_ids": []},
 }
+USERS.update(
+    {
+        f"ENG-{number}": {
+            "name": f"Engineer {number}",
+            "role": "engineer",
+            "station_ids": ["STATION-1"],
+        }
+        for number in range(1, 4)
+    }
+)
+USERS.update(
+    {
+        f"SUP-{number}": {
+            "name": f"Supervisor {number}",
+            "role": "supervisor",
+            "station_ids": [],
+        }
+        for number in range(1, 4)
+    }
+)
+USERS.update(
+    {
+        f"EXEC-{number}": {
+            "name": f"Executive {number}",
+            "role": "executive",
+            "station_ids": [],
+        }
+        for number in range(1, 4)
+    }
+)
 
 
 class LoginRequest(BaseModel):
     user_id: str
+    password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("New password must be at least 8 characters")
+        return value
+
+
+def _lookup_user(user_id: str) -> dict | None:
+    """Resolve a login/token subject to a user record.
+
+    Checks the static demo USERS dict first, then falls back to the HR
+    technician roster (api/technicians.py) so a raw roster id like
+    "TECH-105" is itself a valid login — no separate mapping table to
+    keep in sync with the roster. Imported locally to avoid a circular
+    import, since technicians.py imports from this module at load time.
+    """
+    user = USERS.get(user_id)
+    if user is not None:
+        return user
+    from api.technicians import TECHNICIANS_BY_ID
+
+    tech = TECHNICIANS_BY_ID.get(user_id)
+    if tech is None:
+        return None
+    return {"name": tech["name"], "role": "technician", "station_ids": [], "technician_id": tech["id"]}
+
+
+def _verify_password(user_id: str, password: str) -> dict | None:
+    """Return the resolved identity only when its stored password matches."""
+    db = SessionLocal()
+    try:
+        credential = db.get(StaffCredential, user_id)
+        if credential is None:
+            return None
+        try:
+            valid = bcrypt.checkpw(password.encode(), credential.password_hash.encode())
+        except ValueError:
+            valid = False
+        if not valid:
+            return None
+        user = _lookup_user(user_id)
+        if user is None:
+            return None
+        return {"id": user_id, **user, "must_change_password": credential.must_change_password}
+    finally:
+        db.close()
 
 
 def _encode(value: dict) -> str:
@@ -54,11 +141,14 @@ def get_current_user(
         if not hmac.compare_digest(signature, _sign(header, payload)):
             raise ValueError
         claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-        if claims["exp"] < int(time.time()) or claims["sub"] not in USERS:
+        if claims["exp"] < int(time.time()):
+            raise ValueError
+        user = _lookup_user(claims["sub"])
+        if user is None:
             raise ValueError
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from exc
-    return {"id": claims["sub"], **USERS[claims["sub"]]}
+    return {"id": claims["sub"], **user}
 
 
 def require_roles(*roles: str):
@@ -107,10 +197,32 @@ def require_internal_or_roles(*roles: str):
 
 @router.post("/login")
 async def login(request: LoginRequest):
-    user = USERS.get(request.user_id)
+    user = _verify_password(request.user_id, request.password)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown user")
-    return {"access_token": create_access_token(request.user_id), "token_type": "bearer", "user": {"id": request.user_id, **user}}
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    return {"access_token": create_access_token(request.user_id), "token_type": "bearer", "user": user}
+
+
+@router.patch("/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+):
+    db = SessionLocal()
+    try:
+        credential = db.get(StaffCredential, user["id"])
+        if credential is None or not bcrypt.checkpw(
+            request.current_password.encode(), credential.password_hash.encode()
+        ):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid current password")
+        credential.password_hash = bcrypt.hashpw(
+            request.new_password.encode(), bcrypt.gensalt()
+        ).decode()
+        credential.must_change_password = False
+        db.commit()
+    finally:
+        db.close()
+    return {"status": "ok"}
 
 
 @router.get("/me")

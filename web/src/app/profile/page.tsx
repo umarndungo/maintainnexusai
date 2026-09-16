@@ -1,8 +1,9 @@
 import { AppShell } from "@/components/app-shell";
 import { requireSession } from "@/lib/session";
+import Link from "next/link";
 
 export default async function ProfilePage() {
-  const { user } = await requireSession(["engineer", "supervisor", "executive"]);
+  const { user } = await requireSession(["engineer", "supervisor", "executive", "technician"]);
   return (
     <AppShell user={user}>
       <header className="detail-header"><div><h1>My profile</h1><p>Your account details and assigned stations.</p></div></header>
@@ -14,6 +15,7 @@ export default async function ProfilePage() {
           <div><dt>Assigned stations</dt><dd>{user.station_ids.length ? user.station_ids.join(", ") : "No station assignments listed"}</dd></div>
         </dl>
       </section>
+      <p><Link href="/change-password">Change password</Link></p>
     </AppShell>
   );
 }

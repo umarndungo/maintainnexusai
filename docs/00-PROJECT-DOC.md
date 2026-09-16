@@ -70,7 +70,7 @@ Three front ends sit on top of one backend contract:
 |---|---|---|---|
 | Technician | Mobile app (offline-first) | Assigned work orders, equipment location, parts needed | Accept, update status, mark complete, view own history |
 | Engineer (station) | Next.js dashboard | All telemetry/alerts for their station(s), risk drivers, pending approvals | Approve/reject work orders, view station-level audit log |
-| Executive | Next.js dashboard | Cross-station rollups: downtime avoided, cost saved, uptime trend | Read-only |
+| Executive | Next.js dashboard | Cross-station rollups: downtime avoided, cost saved, uptime trend, loading-bay decisions and capacity | Read-only |
 | Supervisor | Next.js dashboard (shared engineer view + escalation queue) | Escalated work orders past SLA | Reassign, force-approve, close |
 
 RBAC is enforced **server-side** on every endpoint — the frontend hiding a button is UX, not security.
@@ -102,10 +102,18 @@ RBAC is enforced **server-side** on every endpoint — the frontend hiding a but
 | GET | `/api/v1/maintenance/work-orders/{id}/lifecycle` | Full persisted transition history | Next.js (both views), mobile detail screen |
 | GET | `/api/v1/dashboard/equipment/{id}/downtime` | Per-equipment downtime windows | Next.js engineer view |
 | GET | `/api/v1/dashboard/executive-summary` | Downtime avoided, cost saved, uptime trend | Next.js executive view |
+| GET | `/api/v1/operations/decisions` | Recent automated loading-point reroute decisions | Next.js Operations view (engineer, supervisor, executive) |
+| GET | `/api/v1/operations/decisions/{id}` | One decision with its operational action and outcome | Next.js Operations detail integration |
+| GET | `/api/v1/operations/loading-points` | Loading-bay capacity status list | Next.js Operations view (engineer, supervisor, executive) |
+| GET | `/api/v1/operations/loading-points/{id}` | One bay with its truck slots | Next.js Operations detail integration |
 | POST | `/api/v1/auth/login` | Issue JWT | All three front ends |
 | GET | `/api/v1/auth/me` | Current user + role + permitted stations | All three front ends |
 | GET | `/api/v1/events` | Authenticated server-sent events stream for live dashboard updates | Next.js dashboard |
 | POST | `/api/v1/notifications/sms` | Internal — triggers SMS to technician/engineer | Backend-internal only (integrations) |
+
+Operations GET endpoints are read-only and server-authorized for engineers,
+supervisors, and executives. The internal POST action that performs a reroute
+requires the internal service credential and is never called by the browser.
 
 ### Preserved optional HSE presentation extension
 
